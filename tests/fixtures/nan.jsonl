@@ -1,0 +1,4 @@
+{"step": 1, "loss": 10.0, "lr": 0.001, "grad_norm": 1.0}
+{"step": 2, "loss": 8.0, "lr": 0.001, "grad_norm": 1.1}
+{"step": 3, "loss": "NaN", "lr": 0.001, "grad_norm": 1.0}
+{"step": 4, "loss": "NaN", "lr": 0.001, "grad_norm": 1.2}

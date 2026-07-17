@@ -1,0 +1,9 @@
+# Specification Decisions
+
+- **Dependencies**: The specification strictly dictates `numpy`, `soundfile`, and `ttsproof` as the only dependencies. `sentencepiece` is requested for tokenizer testing, but I will wrap its import in a try-except block or parse its models dynamically to respect the dependency constraint. If `sentencepiece` is not installed, the tokenizer tool will still function with standard space-separated splits or raise a missing dependency error without preventing package installation. (Actually, for simplicity, since it's just a linter, if `sentencepiece` is unavailable and the user provides a `.model` file, we might just try importing it and if it fails, suggest `pip install sentencepiece` since the package itself shouldn't require it per constraints).
+- **HTML Report generation**: Used `ttsproof.report_html` as inspiration but adapted it since `trainproof` has different verdict requirements (PASS/WARN/FAIL vs PASS/FAIL/QUARANTINE) and different report structures (epoch vs audio sample).
+- **Log Parsing**: Simple tolerant JSONL / CSV reader. It tries to detect field names regardless of case.
+- **Audio checks**: Imported `ttsproof.audio` where feasible, mapped its configuration with `trainproof/rules.py`. Since `ttsproof.audio` expects paths and returns a comprehensive `AudioReport`, we will use it directly for structural audio checks.
+- **Text normalization**: Using `ttsproof.normalize.normalize_text` to check if original transcript deviates from normalized, identifying things that hurt TTS.
+- **Console Output**: ASCII safe block with `[PASS]`, `[WARN]`, `[FAIL]`. No emojis in the console output to respect `cp1252` constraints.
+- **Log Parsing Adapters**: We strip ANSI codes via regex *before* attempting string matches on Coqui logs. For step grouping in Coqui, we treat `-- GLOBAL_STEP:` lines as the delimiter that flushes the previous accumulated record and starts a new one.

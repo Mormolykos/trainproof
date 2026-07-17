@@ -1,0 +1,90 @@
+ > Training Environment:
+ | > Backend: Torch
+ | > Mixed precision: False
+ | > Precision: float32
+ | > Current device: 0
+ | > Num. of GPUs: 1
+ | > Num. of CPUs: 16
+ | > Num. of Torch Threads: 1
+ | > Torch seed: 1
+ | > Torch CUDNN: True
+ | > Torch CUDNN deterministic: False
+ | > Torch CUDNN benchmark: False
+ | > Torch TF32 MatMul: False
+ > Start Tensorboard: tensorboard --logdir=C:\Users\User\Desktop\BedVibe\src\TTS\recipes\ljspeech\xtts_v2\run\training\GPT_XTTS_v2.0_LJSpeech_FT-February-11-2026_01+07AM-dbf1a08a
+
+ > Model has 518442047 parameters
+
+[4m[1m > EPOCH: 0/1000[0m
+ --> C:\Users\User\Desktop\BedVibe\src\TTS\recipes\ljspeech\xtts_v2\run\training\GPT_XTTS_v2.0_LJSpeech_FT-February-11-2026_01+07AM-dbf1a08a
+
+[1m > EVALUATION [0m
+
+
+  [1m--> EVAL PERFORMANCE[0m
+     | > avg_loader_time: 0.011710572810400102 [0m(+0)
+     | > avg_loss_text_ce: 0.023462566502747084 [0m(+0)
+     | > avg_loss_mel_ce: 4.857856892404102 [0m(+0)
+     | > avg_loss: 4.8813194660913375 [0m(+0)
+
+
+[4m[1m > EPOCH: 1/1000[0m
+ --> C:\Users\User\Desktop\BedVibe\src\TTS\recipes\ljspeech\xtts_v2\run\training\GPT_XTTS_v2.0_LJSpeech_FT-February-11-2026_01+07AM-dbf1a08a
+
+[1m > TRAINING (2026-02-11 01:08:02) [0m
+
+[1m   --> TIME: 2026-02-11 01:08:34 -- STEP: 0/24940 -- GLOBAL_STEP: 0[0m
+     | > loss_text_ce: 0.02437407150864601  (0.02437407150864601)
+     | > loss_mel_ce: 5.235686302185059  (5.235686302185059)
+     | > loss: 0.06261976808309555  (0.06261976808309555)
+     | > current_lr: 5e-06 
+     | > step_time: 0.2354  (0.23540449142456055)
+     | > loader_time: 32.2369  (32.2369499206543)
+
+
+[1m   --> TIME: 2026-02-11 01:08:38 -- STEP: 50/24940 -- GLOBAL_STEP: 50[0m
+     | > loss_text_ce: 0.024043595418334007  (0.025134340338408948)
+     | > loss_mel_ce: 5.094491004943848  (4.758538584709168)
+     | > loss: 0.06093493476510048  (0.056948488280177116)
+     | > current_lr: 5e-06 
+     | > step_time: 0.0509  (0.05133280754089355)
+     | > loader_time: 0.0051  (0.004459586143493652)
+
+
+[1m   --> TIME: 2026-02-11 01:08:42 -- STEP: 100/24940 -- GLOBAL_STEP: 100[0m
+     | > loss_text_ce: 0.019728926941752434  (0.02481332257390022)
+     | > loss_mel_ce: 4.863577842712402  (4.692369453907014)
+     | > loss: 0.05813460797071457  (0.05615693897008896)
+     | > current_lr: 5e-06 
+     | > step_time: 0.0478  (0.0518244743347168)
+     | > loader_time: 0.0051  (0.004314937591552735)
+
+
+[1m   --> TIME: 2026-02-11 01:08:46 -- STEP: 150/24940 -- GLOBAL_STEP: 150[0m
+     | > loss_text_ce: 0.021049555391073227  (0.02469247048099836)
+     | > loss_mel_ce: 4.714635848999023  (4.657325814565025)
+     | > loss: 0.05637720599770546  (0.05573831414182981)
+     | > current_lr: 5e-06 
+     | > step_time: 0.054  (0.05132284800211588)
+     | > loader_time: 0.0051  (0.004271206855773924)
+
+
+[1m   --> TIME: 2026-02-11 01:08:49 -- STEP: 200/24940 -- GLOBAL_STEP: 200[0m
+     | > loss_text_ce: 0.03798484057188034  (0.02468031130731106)
+     | > loss_mel_ce: 4.648581027984619  (4.634902081489565)
+     | > loss: 0.05579245090484619  (0.05547122010961175)
+     | > current_lr: 5e-06 
+     | > step_time: 0.0477  (0.051069792509078976)
+     | > loader_time: 0.0051  (0.004206380844116206)
+
+
+[1m   --> TIME: 2026-02-11 01:08:53 -- STEP: 250/24940 -- GLOBAL_STEP: 250[0m
+     | > loss_text_ce: 0.03680428862571716  (0.024907963879406452)
+     | > loss_mel_ce: 5.511693477630615  (4.606499462127686)
+     | > loss: 0.06605354696512222  (0.05513580375909805)
+     | > current_lr: 5e-06 
+     | > step_time: 0.0498  (0.05104145050048828)
+     | > loader_time: 0.003  (0.004170082092285153)
+
+
+[1m   --> TIME: 2026-02-11 01:08:57 -- STEP: 300/24940 -- GLOBAL_STEP: 300[0m

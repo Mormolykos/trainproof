@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+trainproof_report.html
+dist/
+build/
+.venv/
