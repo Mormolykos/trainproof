@@ -12,6 +12,16 @@ No ML judging ML. No invented "confidence 97%". Every rule is a deterministic
 threshold in [one auditable module](src/trainproof/rules.py), and every finding
 cites the numbers that triggered it.
 
+**What it is:** the reliability layer between your training code and the GPU
+bill — checks that run *before* training (is this run safe to start?), *during*
+training (should it keep going?), and *after* (is it reproducible; did it match
+a known-good baseline?).
+
+**The one rule it never breaks:** trainproof does not infer causes, does not
+invent confidence scores, and does not guess. It reports deterministic findings
+backed by evidence, or it stays silent. Every feature earns its place by
+answering a single question — *if it were gone, would someone lose GPU hours?*
+
 ```bash
 pip install trainproof
 ```
@@ -110,8 +120,6 @@ TRAINPROOF VERDICT
 ========================================
 ```
 
-```
-
 Each command prints the verdict, writes a self-contained HTML report, and sets
 the process exit code — so it works as a CI gate out of the box.
 
@@ -167,6 +175,26 @@ for you unless you ask.
 
 The guardian applies the same deterministic rules as `trainproof epoch`, so it
 inherits their documented single-run limitations.
+
+## Pre-flight (v0.5): stop a run before it starts
+
+The guardian saves most of a doomed run; preflight saves 100% because it never starts. Catch broken datasets and tokenizer misconfigurations instantly.
+
+```bash
+trainproof preflight data/dataset.jsonl --tokenizer mistralai/Mistral-7B-v0.1 --max-len 4096
+```
+
+```text
+========================================
+TRAINPROOF VERDICT
+========================================
+[FAIL] Critical checks failed:
+  [FAIL] Empty or whitespace-only text found.
+         Evidence: 1 records (indices [1]...)
+========================================
+```
+
+*Checks: malformed JSONL, empty text, exact duplicate text, tokenizer structural checks (EOS/PAD/BOS), and context length overflows.*
 
 ## Supported log formats
 

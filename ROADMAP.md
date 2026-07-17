@@ -39,25 +39,31 @@ data every team already has: their last good run.
 - Ships after v0.3 so the guardian judges with reference-aware eyes, not just
   absolute rules.
 
-## v0.5 — Pre-flight LLM data + tokenizer linter (the CI/CD wedge)
+## v0.5 — Pre-flight LLM dataset + tokenizer linter (implemented)
 
-The highest-value direction: catch corruption BEFORE a single GPU-second is
-billed. This is the deterministic answer to the v0.2 `bad_labels` finding —
-loss curves can't see corrupted data, so inspect the data itself. Extends the
-existing `trainproof data` command with an LLM/text mode (the speech pack's
-sibling). All Tier-1, low-difficulty, pure deterministic tensor/array
-inspection; each exits non-zero in CI so a doomed run never provisions.
+`trainproof preflight <dataset.jsonl> [--tokenizer NAME] [--max-len N]`: the
+"before training" tier — catch broken data BEFORE a single GPU-second is billed
+(the guardian saves most of a doomed run; preflight saves 100% because it never
+starts). The deterministic answer to the v0.2 `bad_labels` finding: loss curves
+can't see corrupted data, so inspect the data itself. Engine is IO-free and
+imports transformers zero times; the CLI loads a tokenizer lazily. Every finding
+carries a stable machine-readable id (for future `--ignore` / `--fail-on` / CI
+annotations).
 
-- Tokenizer padding & attention-mask validator: pad tokens map to 0 in the
-  attention mask; `pad_token_id` does not collide with `eos_token_id`; pad
-  positions contribute zero loss.
-- Dataset schema/role fuzzer: malformed JSONL, empty turns, role-sequence
-  errors, context-window violations, encoding artifacts (mojibake).
-- Chat-template validation, sequence-length blowouts, duplicate/contamination.
+Checks shipped (all deterministic, universally-true facts):
+- Dataset: malformed JSONL (FAIL, with line number), empty/whitespace text
+  (FAIL), exact-duplicate text (WARN).
+- Tokenizer: missing eos_token (FAIL), missing pad_token (WARN), pad==eos (WARN),
+  bos presence (INFO only — never warns; many model families have no bos).
+- Context: samples exceeding `--max-len` will be silently truncated (WARN).
+
+Deliberately CUT from v0.5 (future work, NOT built): chat-template validation
+and attention-mask correctness — every model family (ChatML/Alpaca/Llama3/Qwen/
+Gemma/...) has different conventions; that is weeks of work and would violate the
+"universally-true, no guessing" rule if rushed.
 
 Market note: a text-level competitor (Parallelogram) already has community
-traction — proof of demand. Differentiation = go to the tensor level
-(mask/pad/loss), not just text.
+traction — proof of demand.
 
 ## Later
 

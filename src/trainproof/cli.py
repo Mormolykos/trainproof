@@ -4,7 +4,6 @@ from pathlib import Path
 from .speech.data import check_data
 from .speech.tokenizer import check_tokenizer
 from .epoch import check_epoch
-from .epoch import check_epoch
 from .compare import check_compare
 from .watch import watch_loop
 from .report import print_verdict_console, write_html_report
@@ -40,6 +39,13 @@ def main():
     watch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
     watch_parser.add_argument("--until-fail", action="store_true", help="Exit with code 1 as soon as verdict becomes FAIL")
 
+    # Preflight Command
+    preflight_parser = subparsers.add_parser("preflight", help="Pre-flight linter for LLM fine-tuning datasets.")
+    preflight_parser.add_argument("dataset", type=str, help="Path to JSONL dataset")
+    preflight_parser.add_argument("--tokenizer", type=str, help="Tokenizer name or path")
+    preflight_parser.add_argument("--max-len", type=int, help="Max context length")
+    preflight_parser.add_argument("--text-field", type=str, help="Text field to extract")
+
     args = parser.parse_args()
     
     report_dict = {}
@@ -63,6 +69,23 @@ def main():
     elif args.command == "watch":
         watch_loop(args.logfile, interval=args.interval, fmt=args.format, until_fail=args.until_fail)
         sys.exit(0)
+    elif args.command == "preflight":
+        from .preflight import preflight
+        tokenizer = None
+        if args.tokenizer:
+            try:
+                from transformers import AutoTokenizer
+                tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
+            except ImportError:
+                report_dict = {
+                    "verdict": "FAIL",
+                    "findings": [{"id": "transformers_missing", "level": "FAIL", "message": "pip install transformers is required to load tokenizer", "evidence": ""}]
+                }
+                print_verdict_console(report_dict["verdict"], report_dict["findings"])
+                sys.exit(1)
+        
+        result = preflight(args.dataset, tokenizer=tokenizer, max_len=args.max_len, text_field=args.text_field)
+        report_dict = {"verdict": result.verdict, "findings": result.findings}
 
     print_verdict_console(report_dict.get("verdict", "FAIL"), report_dict.get("findings", []))
     
