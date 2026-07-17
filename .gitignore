@@ -6,3 +6,4 @@ trainproof_report.html
 dist/
 build/
 .venv/
+recon/
