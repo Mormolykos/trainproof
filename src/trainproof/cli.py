@@ -4,7 +4,9 @@ from pathlib import Path
 from .speech.data import check_data
 from .speech.tokenizer import check_tokenizer
 from .epoch import check_epoch
+from .epoch import check_epoch
 from .compare import check_compare
+from .watch import watch_loop
 from .report import print_verdict_console, write_html_report
 
 def main():
@@ -31,6 +33,13 @@ def main():
     compare_parser.add_argument("baseline", type=str, help="Path to baseline log file")
     compare_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
 
+    # Watch Command
+    watch_parser = subparsers.add_parser("watch", help="Live guardian: poll a training log.")
+    watch_parser.add_argument("logfile", type=str, help="Path to run log file")
+    watch_parser.add_argument("--interval", type=int, default=10, help="Polling interval in seconds")
+    watch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
+    watch_parser.add_argument("--until-fail", action="store_true", help="Exit with code 1 as soon as verdict becomes FAIL")
+
     args = parser.parse_args()
     
     report_dict = {}
@@ -51,6 +60,9 @@ def main():
         except Exception as e:
             print(f"Error checking compare: {e}")
             sys.exit(1)
+    elif args.command == "watch":
+        watch_loop(args.logfile, interval=args.interval, fmt=args.format, until_fail=args.until_fail)
+        sys.exit(0)
 
     print_verdict_console(report_dict.get("verdict", "FAIL"), report_dict.get("findings", []))
     

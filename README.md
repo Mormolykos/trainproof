@@ -78,7 +78,7 @@ blind spots). The gallery also improved the tool itself twice: the dead-run
 rule and the total-zero-LR fatality rule both exist because runs escaped
 earlier rule versions. See [ROADMAP.md](ROADMAP.md).
 
-## The three commands
+## The commands
 
 ```bash
 # 1. Dataset preflight (speech/TTS pack): audio integrity, transcript quality,
@@ -110,8 +110,63 @@ TRAINPROOF VERDICT
 ========================================
 ```
 
+```
+
 Each command prints the verdict, writes a self-contained HTML report, and sets
 the process exit code — so it works as a CI gate out of the box.
+
+## Live guardian (v0.4)
+
+Don't wait for the post-mortem — catch a doomed run *while it is still burning
+GPU*. Add one line to a HuggingFace `Trainer`:
+
+```python
+from transformers import Trainer
+from trainproof.integrations.hf import TrainproofCallback
+
+trainer = Trainer(
+    ...,
+    callbacks=[TrainproofCallback(policy="stop_on_fail")],  # or policy="warn"
+)
+```
+
+Run against a real diverging QLoRA fine-tune (learning rate 100x too high), the
+guardian aborts it 20 steps into a 300-step schedule — on its own:
+
+```text
+{'loss': '1.784', 'grad_norm': '9.634',  'learning_rate': '0.007'}
+{'loss': '4.282', 'grad_norm': '53.76',  'learning_rate': '0.009'}
+{'loss': '10.6',  'grad_norm': '13.34',  'learning_rate': '0.011'}
+{'loss': '31.67', 'grad_norm': '76.67',  'learning_rate': '0.013'}
+...
+TRAINPROOF ABORT - stopping training at step 20. Findings:
+  [FAIL] Loss curve is diverging.
+         Evidence: End loss 22.952 vs Min loss 1.358
+  [FAIL] Loss never improved over the run (dead run).
+         Evidence: median of first 5 losses 1.502 vs last 5 22.952
+
+  scheduled steps : 300
+  stopped at step : 20
+  run saved       : 93% of the scheduled steps never ran
+```
+
+On a two-day pre-training run, that fraction is days of GPU time. Or watch a
+growing log file from outside the process (CI-friendly, exits non-zero on FAIL):
+
+```bash
+trainproof watch logs/run.jsonl --interval 10 --until-fail
+# [21:37:44] warming up (5 records)
+# [21:37:44] n_records=15 verdict=PASS findings=1
+```
+
+**The default is safe.** `policy="warn"` (the default) only observes and reports
+— it never interrupts your run, so you can leave it on even for experiments you
+expect to fail. Aborting is strictly opt-in via `policy="stop_on_fail"`, the one
+mode that takes an irreversible action. trainproof does not make that decision
+for you unless you ask.
+
+The guardian applies the same deterministic rules as `trainproof epoch`, so it
+inherits their documented single-run limitations.
 
 ## Supported log formats
 

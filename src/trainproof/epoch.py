@@ -4,13 +4,12 @@ from typing import Any
 from . import rules
 from .adapters import parse_log_with_format
 
-def check_epoch(log_path: str | Path, fmt: str = "auto") -> dict[str, Any]:
-    records = parse_log_with_format(log_path, fmt)
+def check_records(records: list[dict]) -> dict[str, Any]:
     findings = []
     verdict = "PASS"
     
     if not records:
-        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "No valid log records found.", "evidence": str(log_path)}]}
+        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "No valid log records found.", "evidence": ""}]}
 
     # Find relevant keys
     def get_val(row, aliases):
@@ -112,3 +111,9 @@ def check_epoch(log_path: str | Path, fmt: str = "auto") -> dict[str, Any]:
         findings.append({"level": "PASS", "message": "Loss curve shows healthy shape, grad norms are stable.", "evidence": f"{len(valid_losses)} steps analyzed."})
 
     return {"verdict": verdict, "findings": findings}
+
+def check_epoch(log_path: str | Path, fmt: str = "auto") -> dict[str, Any]:
+    records = parse_log_with_format(log_path, fmt)
+    if not records:
+        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "No valid log records found.", "evidence": str(log_path)}]}
+    return check_records(records)
