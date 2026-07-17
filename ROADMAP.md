@@ -22,7 +22,7 @@ from real learning (networks fit random labels). **No single-run, loss-curve-onl
 rule can catch this class.** Its detectable signature is relative: a loss floor
 several times higher than a known-good run of the same task.
 
-## v0.3 — Reference-based comparison  ← next
+## v0.3 — Reference-based comparison (implemented)  ← next
 
 `trainproof compare <run> <baseline>`: judge a run against a known-good
 baseline of the same task. Deterministic ratio rules (loss floor ratio,

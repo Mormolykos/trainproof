@@ -55,7 +55,7 @@ shipped in [`examples/gallery/`](examples/gallery/):
 | `lr_hot` | LR x100 (2e-2) | **FAIL** | diverging: end 7.49 vs min 1.40; grad spike 2650 vs median 0.55 |
 | `lr_zero` | LR = 0 | **FAIL** | dead run: first-5 median 1.52 vs last-5 1.49 (<5% improvement); lr=0 on 100% of steps |
 | `fp16_nan` | fp16 + hot LR, no clipping | **FAIL** | diverging: end 7.21 vs min 1.09 (grad scaling absorbed the intended NaN — the run diverged instead; reported as observed) |
-| `bad_labels` | labels shuffled per-sequence | **WARN only** — see below | grad spike 23.3 vs median 1.09 |
+| `bad_labels` | labels shuffled per-sequence | **WARN only** (single-run) — caught by `trainproof compare` (v0.3) | grad spike 23.3 vs median 1.09 |
 
 ### The honest finding: loss curves cannot see corrupted data
 
@@ -67,10 +67,16 @@ famously fit random labels). **No single-run, loss-only rule can catch this
 class of failure** — its real signature is *relative*: a loss floor ~6x higher
 than a known-good run of the same task (5.59 vs 0.94).
 
-That finding sets the roadmap: v0.3 is `trainproof compare <run> <baseline>` —
-deterministic ratio rules against the healthy baseline you already have.
-See [ROADMAP.md](ROADMAP.md). (The gallery also improved v0.2 itself: the
-dead-run rule exists because `lr_zero` initially escaped with only a WARN.)
+That finding produced v0.3: `trainproof compare <run> <baseline>` —
+deterministic ratio rules against the healthy baseline you already have —
+which catches `bad_labels` at a 6x loss-floor ratio, in 3 seeds out of 3.
+The full study was repeated with three random seeds (15 runs):
+see [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) for every verdict, including the
+honest miss (compare alone overlooks one lr_zero seed — the single-run
+zero-LR fatality rule owns that case; the two commands cover each other's
+blind spots). The gallery also improved the tool itself twice: the dead-run
+rule and the total-zero-LR fatality rule both exist because runs escaped
+earlier rule versions. See [ROADMAP.md](ROADMAP.md).
 
 ## The three commands
 
@@ -86,6 +92,22 @@ trainproof tokenizer my_tokenizer.model transcripts.txt
 # 3. Training-run verdict: NaN/divergence/dead-run detection, gradient spikes,
 #    LR sanity, throughput — from log files, any framework
 trainproof epoch logs/run.jsonl            # exit code 1 on FAIL: CI-ready
+
+# 4. Compare against a baseline
+#    Catch relative pathologies like the `bad_labels` run that evade single-run rules.
+trainproof compare examples/gallery/bad_labels/trainer_state.json examples/gallery/healthy/trainer_state.json
+```
+
+```text
+========================================
+TRAINPROOF VERDICT
+========================================
+[FAIL] Critical checks failed:
+  [FAIL] loss floor ratio exceeded limit
+         Evidence: Run floor 5.592 vs Baseline floor 0.937 (ratio 6.0x > 2.0)
+  [FAIL] end loss ratio exceeded limit
+         Evidence: Run end 5.750 vs Baseline end 1.082 (ratio 5.3x > 2.0)
+========================================
 ```
 
 Each command prints the verdict, writes a self-contained HTML report, and sets

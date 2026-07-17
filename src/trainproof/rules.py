@@ -52,6 +52,12 @@ MAX_GRAD_NORM_SPIKE_RATIO = 10.0
 # If the learning rate is strictly zero for more than this fraction of the epoch, it's a warning.
 MAX_ZERO_LR_FRACTION = 0.1
 
+# If the learning rate is zero for essentially the ENTIRE run, the optimizer
+# never steps — the run cannot train, regardless of how the loss wiggles
+# (multi-seed testing showed batch-order noise can fake >5% "improvement"
+# under lr=0). Total zero-LR is a fatality, not a warning.
+ZERO_LR_FAIL_FRACTION = 0.99
+
 # Dead-run detection (added in v0.2 after fault-injection testing showed that
 # zero-LR and garbage-label runs — which can never learn — only earned WARNs):
 # the median of the last LOSS_IMPROVEMENT_WINDOW losses must be at least
@@ -61,3 +67,24 @@ MAX_ZERO_LR_FRACTION = 0.1
 MIN_LOSS_IMPROVEMENT = 0.05
 LOSS_IMPROVEMENT_WINDOW = 5
 MIN_POINTS_FOR_IMPROVEMENT_CHECK = 10
+
+# -----------------
+# COMPARE SUBCOMMAND
+# -----------------
+
+# FAIL "loss floor ratio" if run_floor / baseline_floor > 2.0
+MAX_FLOOR_RATIO = 2.0
+
+# FAIL "end loss ratio" if the run's final loss (median of last window) lands
+# more than this factor above the baseline's. Judges where the run LANDED —
+# robust both to noisy first steps and to corruption inside the first window
+# (e.g. an LR explosion at step 10 inflates the run's own start median, making
+# self-relative improvement look positive; the end ratio still catches it).
+MAX_END_RATIO = 2.0
+
+# FAIL "improvement deficit" if the run's relative improvement is < 25% of the baseline's
+# (only evaluated when baseline improvement > 0). A run with NEGATIVE improvement always trips this rule.
+MIN_IMPROVEMENT_FRACTION = 0.25
+
+# WARN if run's grad-norm median > 5x baseline's (skip if either lacks grad norms)
+MAX_GRADNORM_MEDIAN_RATIO = 5.0

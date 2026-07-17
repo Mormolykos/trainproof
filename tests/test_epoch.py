@@ -41,3 +41,11 @@ def test_epoch_dead_noisy():
     report = check_epoch(FIXTURES_DIR / "dead_noisy.jsonl")
     assert report["verdict"] == "FAIL"
     assert any("never improved" in str(f) for f in report["findings"])
+
+def test_epoch_total_zero_lr_is_fatal():
+    # lr=0 on every step: the optimizer never moves — FAIL regardless of how
+    # batch-order noise makes the loss wiggle (found by multi-seed testing)
+    gallery = Path(__file__).parent.parent / "examples" / "gallery"
+    report = check_epoch(gallery / "lr_zero" / "trainer_state.json", fmt="hf")
+    assert report["verdict"] == "FAIL"
+    assert any("optimizer never steps" in str(f) for f in report["findings"])

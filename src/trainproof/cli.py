@@ -4,6 +4,7 @@ from pathlib import Path
 from .speech.data import check_data
 from .speech.tokenizer import check_tokenizer
 from .epoch import check_epoch
+from .compare import check_compare
 from .report import print_verdict_console, write_html_report
 
 def main():
@@ -24,6 +25,12 @@ def main():
     epoch_parser.add_argument("logfile", type=str, help="Path to JSONL or CSV log file")
     epoch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
 
+    # Compare Command
+    compare_parser = subparsers.add_parser("compare", help="Compare a run log against a baseline log.")
+    compare_parser.add_argument("run", type=str, help="Path to run log file")
+    compare_parser.add_argument("baseline", type=str, help="Path to baseline log file")
+    compare_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
+
     args = parser.parse_args()
     
     report_dict = {}
@@ -37,6 +44,12 @@ def main():
             report_dict = check_epoch(args.logfile, fmt=args.format)
         except Exception as e:
             print(f"Error checking epoch: {e}")
+            sys.exit(1)
+    elif args.command == "compare":
+        try:
+            report_dict = check_compare(args.run, args.baseline, fmt=args.format)
+        except Exception as e:
+            print(f"Error checking compare: {e}")
             sys.exit(1)
 
     print_verdict_console(report_dict.get("verdict", "FAIL"), report_dict.get("findings", []))

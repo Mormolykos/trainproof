@@ -92,7 +92,10 @@ def check_epoch(log_path: str | Path, fmt: str = "auto") -> dict[str, Any]:
     if lrs:
         zeros = sum(1 for lr in lrs if lr <= 0)
         zero_frac = zeros / len(lrs)
-        if zero_frac > rules.MAX_ZERO_LR_FRACTION:
+        if zero_frac >= rules.ZERO_LR_FAIL_FRACTION:
+            findings.append({"level": "FAIL", "message": "Learning rate is zero for the entire run - the optimizer never steps.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"})
+            verdict = "FAIL"
+        elif zero_frac > rules.MAX_ZERO_LR_FRACTION:
             findings.append({"level": "WARN", "message": "Learning rate is zero for a large fraction of the run.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"})
             if verdict == "PASS": verdict = "WARN"
 
