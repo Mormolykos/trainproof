@@ -34,3 +34,10 @@ def test_epoch_flat():
     report = check_epoch(FIXTURES_DIR / "flat.jsonl")
     assert report["verdict"] == "FAIL"
     assert any("completely flat" in str(f) for f in report["findings"])
+
+def test_epoch_dead_noisy():
+    # noisy-but-never-improving loss with healthy lr: only the no-improvement
+    # rule (v0.2) can catch this dead run
+    report = check_epoch(FIXTURES_DIR / "dead_noisy.jsonl")
+    assert report["verdict"] == "FAIL"
+    assert any("never improved" in str(f) for f in report["findings"])

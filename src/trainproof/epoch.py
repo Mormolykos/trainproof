@@ -67,6 +67,16 @@ def check_epoch(log_path: str | Path, fmt: str = "auto") -> dict[str, Any]:
             findings.append({"level": "FAIL", "message": "Loss curve is diverging.", "evidence": f"End loss {valid_losses[-1]:.3f} vs Min loss {min_loss:.3f}"})
             verdict = "FAIL"
 
+        # Check no-improvement (dead run): robust start-vs-end median comparison
+        if len(valid_losses) >= rules.MIN_POINTS_FOR_IMPROVEMENT_CHECK:
+            w = rules.LOSS_IMPROVEMENT_WINDOW
+            start_med = sorted(valid_losses[:w])[w // 2]
+            end_med = sorted(valid_losses[-w:])[w // 2]
+            if start_med > 0 and end_med >= start_med * (1 - rules.MIN_LOSS_IMPROVEMENT):
+                findings.append({"level": "FAIL", "message": "Loss never improved over the run (dead run).",
+                                 "evidence": f"median of first {w} losses {start_med:.3f} vs last {w} {end_med:.3f} (needs >={rules.MIN_LOSS_IMPROVEMENT*100:.0f}% improvement)"})
+                verdict = "FAIL"
+
     # Check Grad Norm
     valid_gns = [g for g in grad_norms if not math.isnan(g) and not math.isinf(g)]
     if valid_gns and len(valid_gns) > 5:

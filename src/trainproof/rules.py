@@ -51,3 +51,13 @@ MAX_GRAD_NORM_SPIKE_RATIO = 10.0
 
 # If the learning rate is strictly zero for more than this fraction of the epoch, it's a warning.
 MAX_ZERO_LR_FRACTION = 0.1
+
+# Dead-run detection (added in v0.2 after fault-injection testing showed that
+# zero-LR and garbage-label runs — which can never learn — only earned WARNs):
+# the median of the last LOSS_IMPROVEMENT_WINDOW losses must be at least
+# MIN_LOSS_IMPROVEMENT (relative) below the median of the first window, else
+# the run never learned. Note: this targets FIRST-EPOCH linting; a model
+# resumed at its convergence floor would also trip it.
+MIN_LOSS_IMPROVEMENT = 0.05
+LOSS_IMPROVEMENT_WINDOW = 5
+MIN_POINTS_FOR_IMPROVEMENT_CHECK = 10
