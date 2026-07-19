@@ -1,5 +1,6 @@
 import time
 import sys
+import os
 from datetime import datetime
 from pathlib import Path
 from .adapters import parse_log_with_format
@@ -38,8 +39,6 @@ def poll_once(path: str | Path, fmt: str, prev_verdict: str | None) -> tuple[str
         
     return (verdict, changed, n_records)
 
-import os
-
 def watch_loop(path: str | Path, interval: int = 10, fmt: str = "auto", until_fail: bool = False, stall_timeout: int = 300):
     prev_verdict = None
     last_size = -1
@@ -60,7 +59,8 @@ def watch_loop(path: str | Path, interval: int = 10, fmt: str = "auto", until_fa
                 stall_warned = False
             else:
                 if not stall_warned and (now - last_change_time) > stall_timeout:
-                    print(f"\n[WARN] No log growth for {stall_timeout}s - training may be stalled (dataloader deadlock, crashed process, or saving a huge checkpoint).")
+                    print()
+                    print_verdict_console("WARN", [{"id": "TP-STALL", "level": "WARN", "message": f"No log growth for {stall_timeout}s - training may be stalled.", "evidence": ""}])
                     stall_warned = True
 
             verdict, changed, n = poll_once(path, fmt, prev_verdict)

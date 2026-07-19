@@ -20,8 +20,11 @@ def test_coqui_adapter():
 def test_hf_healthy_adapter():
     path = FIXTURES / "trainer_state_healthy.json"
     records = parse_log_with_format(path)
-    assert len(records) == 10  # 11 logs, 1 is eval and has no loss
-    assert "loss" in records[0]
+    assert len(records) == 11  # 11 logs including eval_loss record
+    
+    eval_record = next(r for r in records if "eval_loss" in r)
+    assert "eval_loss" in eval_record
+    assert "loss" not in eval_record
     
     result = check_epoch(path)
     assert result["verdict"] == "PASS"

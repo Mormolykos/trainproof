@@ -1,5 +1,6 @@
 import argparse
 import sys
+import json
 from pathlib import Path
 from .speech.data import check_data
 from .speech.tokenizer import check_tokenizer
@@ -7,7 +8,26 @@ from .epoch import check_epoch
 from .compare import check_compare
 from .watch import watch_loop
 from .report import print_verdict_console, write_html_report, print_doctor_autopsy, print_doctor_footer, print_compare_table
-from .adapters import parse_log_with_format
+from .adapters import parse_log_with_format, parse_log_with_format_info
+
+def parse_map(map_list):
+    overrides = {}
+    if map_list:
+        for m in map_list:
+            if '=' in m:
+                canon, col = m.split('=', 1)
+                overrides[canon.strip()] = col.strip()
+    return overrides
+
+def output_json(reports, worst_verdict):
+    out = {
+        "schema_version": 1,
+        "trainproof_version": __import__('trainproof').__version__,
+        "reports": reports,
+        "worst_verdict": worst_verdict
+    }
+    print(json.dumps(out, indent=2))
+    sys.exit(1 if worst_verdict == "FAIL" else 0)
 
 def main():
     parser = argparse.ArgumentParser(prog="trainproof", description="Trainproof: A deterministic linter for ML training runs.")
@@ -27,24 +47,31 @@ def main():
     epoch_parser = subparsers.add_parser("epoch", help="First-epoch verdict from training logs.")
     epoch_parser.add_argument("logfile", type=str, help="Path to JSONL or CSV log file")
     epoch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
+    epoch_parser.add_argument("--map", action="append", help="Override log column mapping (e.g. loss=my_loss)")
+    epoch_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
 
     # Doctor Command
     doctor_parser = subparsers.add_parser("doctor", aliases=["diagnose"], help="Flagship zero-config autopsy of training logs.")
     doctor_parser.add_argument("path", type=str, nargs="?", default=".", help="Path to file or directory")
     doctor_parser.add_argument("--baseline", type=str, help="Additionally run compare against this baseline")
     doctor_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override (file mode only)")
+    doctor_parser.add_argument("--map", action="append", help="Override log column mapping (e.g. loss=my_loss)")
+    doctor_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
 
     # Compare Command
     compare_parser = subparsers.add_parser("compare", help="Compare a run log against a baseline log.")
     compare_parser.add_argument("baseline", type=str, help="Path to baseline log file")
     compare_parser.add_argument("runs", type=str, nargs="+", help="Path to one or more run log files")
     compare_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
+    compare_parser.add_argument("--map", action="append", help="Override log column mapping")
+    compare_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
 
     # Watch Command
     watch_parser = subparsers.add_parser("watch", help="Live guardian: poll a training log.")
     watch_parser.add_argument("logfile", type=str, help="Path to run log file")
     watch_parser.add_argument("--interval", type=int, default=10, help="Polling interval in seconds")
     watch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
+    watch_parser.add_argument("--map", action="append", help="Override log column mapping")
     watch_parser.add_argument("--until-fail", action="store_true", help="Exit with code 1 as soon as verdict becomes FAIL")
     watch_parser.add_argument("--stall-timeout", type=int, default=300, help="Seconds of no log growth before warning of a stall")
 
@@ -57,6 +84,9 @@ def main():
 
     args = parser.parse_args()
     
+    mapping_overrides = parse_map(getattr(args, "map", None))
+    is_json = getattr(args, "json", False)
+    
     report_dict = {}
 
     if args.command == "data":
@@ -65,11 +95,15 @@ def main():
         report_dict = check_tokenizer(args.model, args.transcripts)
     elif args.command == "epoch":
         try:
-            report_dict = check_epoch(args.logfile, fmt=args.format)
+            report_dict = check_epoch(args.logfile, fmt=args.format, mapping_overrides=mapping_overrides)
         except Exception as e:
+            if is_json:
+                output_json([{"error": str(e)}], "FAIL")
             print(f"Error checking epoch: {e}")
             sys.exit(1)
-    from .adapters import parse_log_with_format_info
+            
+        if is_json:
+            output_json([report_dict], report_dict.get("verdict", "UNKNOWN"))
 
     if getattr(args, "command", None) in ("doctor", "diagnose"):
         path = Path(args.path)
@@ -81,35 +115,38 @@ def main():
                 if not p.is_file(): continue
                 if p.name == "trainer_state.json" or p.suffix in (".jsonl", ".csv", ".log", ".txt"):
                     try:
-                        records, _ = parse_log_with_format_info(p, fmt="auto")
+                        records, _, _ = parse_log_with_format_info(p, fmt="auto", mapping_overrides=mapping_overrides)
                         if len(records) >= 3:
                             candidates.append(p)
                     except Exception:
                         pass
         else:
+            if is_json: output_json([{"error": f"Path not found: {path}"}], "FAIL")
             print(f"Path not found: {path}")
             sys.exit(2)
             
         if not candidates:
+            if is_json: output_json([{"error": "No valid logs found."}], "FAIL")
             print("No valid logs found.")
             sys.exit(2)
             
         if path.is_dir():
             candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
             if len(candidates) > 20:
-                print(f"Note: Found {len(candidates)} logs, capping to 20 most recently modified. Skipped {len(candidates)-20} logs.")
+                if not is_json:
+                    print(f"Note: Found {len(candidates)} logs, capping to 20 most recently modified. Skipped {len(candidates)-20} logs.")
                 candidates = candidates[:20]
                 
-        # Run checks
         results = []
         from .epoch import check_records
         for p in candidates:
             fmt = args.format if path.is_file() else "auto"
             try:
-                records, fmt_str = parse_log_with_format_info(p, fmt)
+                records, fmt_str, used_mapping = parse_log_with_format_info(p, fmt, mapping_overrides)
             except Exception:
                 records = []
                 fmt_str = "unknown"
+                used_mapping = {}
             if not records: continue
             
             step_range = f"{records[0].get('step', 0)}..{records[-1].get('step', len(records)-1)}"
@@ -119,18 +156,26 @@ def main():
             report["fmt"] = fmt_str
             report["num_records"] = len(records)
             report["step_range"] = step_range
+            report["used_mapping"] = used_mapping
             
             if args.baseline:
                 try:
-                    cmp = check_compare(p, args.baseline, fmt=fmt)
+                    cmp = check_compare(p, args.baseline, fmt=fmt, mapping_overrides=mapping_overrides)
                     report["compare_findings"] = cmp["findings"]
                 except Exception:
                     pass
             results.append(report)
             
-        # triage order: failures first, then warnings, then passes
         _order = {"FAIL": 0, "WARN": 1, "PASS": 2}
         results.sort(key=lambda r: _order.get(r["verdict"], 3))
+
+        worst_verdict = "PASS"
+        for r in results:
+            if r["verdict"] == "FAIL": worst_verdict = "FAIL"
+            elif r["verdict"] == "WARN" and worst_verdict == "PASS": worst_verdict = "WARN"
+
+        if is_json:
+            output_json(results, worst_verdict)
 
         if len(results) > 1:
             print("SUMMARY")
@@ -139,17 +184,19 @@ def main():
                 print(f"{r['verdict']:<4} | {r['file']}")
             print()
             
-        worst_verdict = "PASS"
         for r in results:
-            if r["verdict"] == "FAIL": worst_verdict = "FAIL"
-            elif r["verdict"] == "WARN" and worst_verdict == "PASS": worst_verdict = "WARN"
-            
             print_doctor_autopsy(r["file"], r["fmt"], r["num_records"], r["step_range"], r["verdict"], r["findings"])
+            if r.get("used_mapping") and r["fmt"] in ("csv", "jsonl"):
+                print("COLUMNS: " + ", ".join(f"{canon}<-'{col}'" for canon, col in r["used_mapping"].items()))
+                print()
+                
             if "compare_findings" in r:
                 print("--- VS BASELINE ---")
                 for f in r["compare_findings"]:
                     level = f.get("level", "INFO")
-                    print(f"[{level}] {f.get('message', '')}")
+                    rid = f.get("id", "")
+                    prefix = f"[{level}] {rid}: " if rid else f"[{level}] "
+                    print(f"{prefix}{f.get('message', '')}")
                     if f.get('evidence'): print(f"       Evidence: {f.get('evidence')}")
                 print()
                 
@@ -159,7 +206,7 @@ def main():
     elif args.command == "compare":
         try:
             from .compare import extract_metrics
-            baseline_records = parse_log_with_format(args.baseline, args.format)
+            baseline_records = parse_log_with_format(args.baseline, args.format, mapping_overrides)
             base_metrics = extract_metrics(baseline_records) if baseline_records else None
             
             table_results = []
@@ -175,10 +222,10 @@ def main():
             
             all_reports = []
             for run_path in args.runs:
-                report_dict = check_compare(run_path, args.baseline, fmt=args.format)
+                report_dict = check_compare(run_path, args.baseline, fmt=args.format, mapping_overrides=mapping_overrides)
                 all_reports.append(report_dict)
                 
-                run_records = parse_log_with_format(run_path, args.format)
+                run_records = parse_log_with_format(run_path, args.format, mapping_overrides)
                 run_metrics = extract_metrics(run_records) if run_records else None
                 if run_metrics:
                     table_results.append({
@@ -190,9 +237,15 @@ def main():
                         "verdict": report_dict["verdict"]
                     })
             
+            if is_json:
+                worst_verdict = "PASS"
+                for r in all_reports:
+                    if r["verdict"] == "FAIL": worst_verdict = "FAIL"
+                    elif r["verdict"] == "WARN" and worst_verdict == "PASS": worst_verdict = "WARN"
+                output_json(all_reports, worst_verdict)
+                
             print_compare_table(table_results)
             
-            # detailed output if exactly 2 paths (1 baseline + 1 run)
             if len(args.runs) == 1:
                 print_verdict_console(all_reports[0]["verdict"], all_reports[0]["findings"])
                 sys.exit(1 if all_reports[0]["verdict"] == "FAIL" else 0)
@@ -200,6 +253,7 @@ def main():
             sys.exit(1 if any(r["verdict"] == "FAIL" for r in all_reports) else 0)
                 
         except Exception as e:
+            if is_json: output_json([{"error": str(e)}], "FAIL")
             print(f"Error checking compare: {e}")
             sys.exit(1)
     elif args.command == "watch":
@@ -215,7 +269,7 @@ def main():
             except ImportError:
                 report_dict = {
                     "verdict": "FAIL",
-                    "findings": [{"id": "transformers_missing", "level": "FAIL", "message": "pip install transformers is required to load tokenizer", "evidence": ""}]
+                    "findings": [{"id": "TP-PRE-TRANSFORMERS-MISSING", "level": "FAIL", "message": "pip install transformers is required to load tokenizer", "evidence": ""}]
                 }
                 print_verdict_console(report_dict["verdict"], report_dict["findings"])
                 sys.exit(1)
@@ -225,7 +279,6 @@ def main():
 
     print_verdict_console(report_dict.get("verdict", "FAIL"), report_dict.get("findings", []))
     
-    # Write self-contained HTML report
     html_out = Path("trainproof_report.html")
     write_html_report(report_dict, html_out)
     print(f"\nSaved detailed HTML report to {html_out.absolute()}")

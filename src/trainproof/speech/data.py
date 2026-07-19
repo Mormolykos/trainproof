@@ -30,10 +30,10 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
             txt = txt_path.read_text(encoding="utf-8").strip() if txt_path.exists() else ""
             records.append({"audio_filepath": str(wav_path), "text": txt})
     else:
-        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "Input must be a directory or manifest.jsonl.", "evidence": str(path)}]}
+        return {"verdict": "FAIL", "findings": [{"id": "TP-DATA-INVALID-INPUT", "level": "FAIL", "message": "Input must be a directory or manifest.jsonl.", "evidence": str(path)}]}
 
     if not records:
-        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "No data found.", "evidence": ""}]}
+        return {"verdict": "FAIL", "findings": [{"id": "TP-DATA-NO-DATA", "level": "FAIL", "message": "No data found.", "evidence": ""}]}
 
     # Audio corpus stats
     sample_rates = set()
@@ -120,23 +120,23 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
                 unreadable_audio += 1
 
     if len(sample_rates) > 1:
-        findings.append({"level": "FAIL", "message": "Inconsistent sample rates found.", "evidence": f"Rates: {sample_rates}"})
+        findings.append({"id": "TP-DATA-INCONSISTENT-SR", "level": "FAIL", "message": "Inconsistent sample rates found.", "evidence": f"Rates: {sample_rates}"})
         verdict = "FAIL"
         
     if len(channels) > 1:
-        findings.append({"level": "FAIL", "message": "Inconsistent channel counts found.", "evidence": f"Channels: {channels}"})
+        findings.append({"id": "TP-DATA-INCONSISTENT-CHANNELS", "level": "FAIL", "message": "Inconsistent channel counts found.", "evidence": f"Channels: {channels}"})
         verdict = "FAIL"
 
     if missing_audio > 0:
-        findings.append({"level": "FAIL", "message": "Manifest references audio files that do not exist.", "evidence": f"{missing_audio} of {len(records)} records."})
+        findings.append({"id": "TP-DATA-MISSING-AUDIO", "level": "FAIL", "message": "Manifest references audio files that do not exist.", "evidence": f"{missing_audio} of {len(records)} records."})
         verdict = "FAIL"
 
     if unreadable_audio > 0:
-        findings.append({"level": "WARN", "message": "Audio files could not be read/decoded.", "evidence": f"{unreadable_audio} files."})
+        findings.append({"id": "TP-DATA-UNREADABLE-AUDIO", "level": "WARN", "message": "Audio files could not be read/decoded.", "evidence": f"{unreadable_audio} files."})
         if verdict == "PASS": verdict = "WARN"
 
     if empty_transcripts > 0:
-        findings.append({"level": "WARN", "message": "Empty transcripts.", "evidence": f"{empty_transcripts} of {len(records)} records."})
+        findings.append({"id": "TP-DATA-EMPTY-TRANSCRIPT", "level": "WARN", "message": "Empty transcripts.", "evidence": f"{empty_transcripts} of {len(records)} records."})
         if verdict == "PASS": verdict = "WARN"
 
     if durations:
@@ -145,10 +145,10 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
         sorted_d = sorted(durations)
         dist = f"min {sorted_d[0]:.2f}s / median {sorted_d[len(sorted_d)//2]:.2f}s / max {sorted_d[-1]:.2f}s"
         if too_long > 0:
-            findings.append({"level": "WARN", "message": "Audio duration outliers above MAX_AUDIO_DURATION_SEC.", "evidence": f"{too_long} files > {rules.MAX_AUDIO_DURATION_SEC}s ({dist})"})
+            findings.append({"id": "TP-DATA-DURATION-LONG", "level": "WARN", "message": "Audio duration outliers above MAX_AUDIO_DURATION_SEC.", "evidence": f"{too_long} files > {rules.MAX_AUDIO_DURATION_SEC}s ({dist})"})
             if verdict == "PASS": verdict = "WARN"
         if too_short > 0:
-            findings.append({"level": "WARN", "message": "Audio duration outliers below MIN_AUDIO_DURATION_SEC.", "evidence": f"{too_short} files < {rules.MIN_AUDIO_DURATION_SEC}s ({dist})"})
+            findings.append({"id": "TP-DATA-DURATION-SHORT", "level": "WARN", "message": "Audio duration outliers below MIN_AUDIO_DURATION_SEC.", "evidence": f"{too_short} files < {rules.MIN_AUDIO_DURATION_SEC}s ({dist})"})
             if verdict == "PASS": verdict = "WARN"
 
     if len(chars_per_sec) >= 10:
@@ -160,31 +160,31 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
                         or r < median_rate / rules.CHARS_PER_SEC_OUTLIER_RATIO]
             if outliers:
                 worst = max(outliers, key=lambda x: abs(x[1] - median_rate))
-                findings.append({"level": "WARN", "message": "Text-length vs audio-duration outliers (possible transcript/audio mismatch).",
+                findings.append({"id": "TP-DATA-CHAR-RATE-OUTLIER", "level": "WARN", "message": "Text-length vs audio-duration outliers (possible transcript/audio mismatch).",
                                  "evidence": f"{len(outliers)} records deviate >{rules.CHARS_PER_SEC_OUTLIER_RATIO}x from median {median_rate:.1f} chars/sec; worst: {worst[0]} ({worst[1]:.1f} chars/sec)"})
                 if verdict == "PASS": verdict = "WARN"
 
     if duplicates > 0:
-        findings.append({"level": "WARN", "message": "Duplicate audio content detected.", "evidence": f"{duplicates} files have identical hashes."})
+        findings.append({"id": "TP-DATA-DUPLICATES", "level": "WARN", "message": "Duplicate audio content detected.", "evidence": f"{duplicates} files have identical hashes."})
         if verdict == "PASS": verdict = "WARN"
 
     if clipping_count > 0:
-        findings.append({"level": "WARN", "message": "Audio clipping detected.", "evidence": f"{clipping_count} files exceed MAX_CLIPPING_PEAK ({rules.MAX_CLIPPING_PEAK})."})
+        findings.append({"id": "TP-DATA-CLIPPING", "level": "WARN", "message": "Audio clipping detected.", "evidence": f"{clipping_count} files exceed MAX_CLIPPING_PEAK ({rules.MAX_CLIPPING_PEAK})."})
         if verdict == "PASS": verdict = "WARN"
         
     if silent_count > 0:
-        findings.append({"level": "WARN", "message": "Excessive silence detected.", "evidence": f"{silent_count} files exceed MAX_SILENCE_SEC ({rules.MAX_SILENCE_SEC}s)."})
+        findings.append({"id": "TP-DATA-SILENCE", "level": "WARN", "message": "Excessive silence detected.", "evidence": f"{silent_count} files exceed MAX_SILENCE_SEC ({rules.MAX_SILENCE_SEC}s)."})
         if verdict == "PASS": verdict = "WARN"
         
     if unnormalized_count > 0:
-        findings.append({"level": "WARN", "message": "Unnormalized text that hurts TTS (digits, dates).", "evidence": f"{unnormalized_count} transcripts need normalization."})
+        findings.append({"id": "TP-DATA-UNNORMALIZED", "level": "WARN", "message": "Unnormalized text that hurts TTS (digits, dates).", "evidence": f"{unnormalized_count} transcripts need normalization."})
         if verdict == "PASS": verdict = "WARN"
 
     if mixed_scripts_count > 0:
-        findings.append({"level": "WARN", "message": "Mixed character scripts in transcripts.", "evidence": f"{mixed_scripts_count} transcripts."})
+        findings.append({"id": "TP-DATA-MIXED-SCRIPTS", "level": "WARN", "message": "Mixed character scripts in transcripts.", "evidence": f"{mixed_scripts_count} transcripts."})
         if verdict == "PASS": verdict = "WARN"
 
     if verdict == "PASS":
-        findings.append({"level": "PASS", "message": "Dataset preflight completed successfully.", "evidence": f"Processed {len(records)} records."})
+        findings.append({"id": "TP-DATA-PASS", "level": "PASS", "message": "Dataset preflight completed successfully.", "evidence": f"Processed {len(records)} records."})
 
     return {"verdict": verdict, "findings": findings}

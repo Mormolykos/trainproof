@@ -28,7 +28,7 @@ def test_check_empty_rows():
     records, _ = load_jsonl(FIXTURES_DIR / "empties.jsonl")
     findings = check_empty_rows(records, None)
     assert len(findings) == 1
-    assert findings[0]["id"] == "empty_text"
+    assert findings[0]["id"] == "TP-PRE-EMPTY-TEXT"
     assert findings[0]["level"] == "FAIL"
 
     records_clean, _ = load_jsonl(FIXTURES_DIR / "clean.jsonl")
@@ -38,7 +38,7 @@ def test_check_duplicates():
     records, _ = load_jsonl(FIXTURES_DIR / "dupes.jsonl")
     findings = check_duplicates(records, None)
     assert len(findings) == 1
-    assert findings[0]["id"] == "duplicate_text"
+    assert findings[0]["id"] == "TP-PRE-DUPLICATE-TEXT"
     assert findings[0]["level"] == "WARN"
 
     records_clean, _ = load_jsonl(FIXTURES_DIR / "clean.jsonl")
@@ -48,7 +48,7 @@ def test_check_tokenizer():
     # 1. Missing EOS
     tok1 = SimpleNamespace(eos_token=None, pad_token="<pad>", bos_token=None)
     f1 = check_tokenizer(tok1)
-    assert f1[0]["id"] == "missing_eos_token"
+    assert f1[0]["id"] == "TP-PRE-MISSING-EOS-TOKEN"
     assert f1[0]["level"] == "FAIL"
 
     # 2. Missing PAD
@@ -56,16 +56,16 @@ def test_check_tokenizer():
     f2 = check_tokenizer(tok2)
     assert len(f2) == 2
     ids = {f["id"] for f in f2}
-    assert "missing_pad_token" in ids
-    assert "bos_token_info" in ids
+    assert "TP-PRE-MISSING-PAD-TOKEN" in ids
+    assert "TP-PRE-BOS-TOKEN-INFO" in ids
 
     # 3. PAD == EOS
     tok3 = SimpleNamespace(eos_token="<eos>", pad_token="<pad>", eos_token_id=5, pad_token_id=5, bos_token=None)
     f3 = check_tokenizer(tok3)
     assert len(f3) == 2
     ids = {f["id"] for f in f3}
-    assert "pad_equals_eos" in ids
-    assert "bos_token_info" in ids
+    assert "TP-PRE-PAD-EQUALS-EOS" in ids
+    assert "TP-PRE-BOS-TOKEN-INFO" in ids
 
 def test_check_context_length():
     records, _ = load_jsonl(FIXTURES_DIR / "clean.jsonl")
@@ -74,12 +74,12 @@ def test_check_context_length():
     
     # Skipped
     f1 = check_context_length(records, tok, None, None)
-    assert f1[0]["id"] == "context_check_skipped"
+    assert f1[0]["id"] == "TP-PRE-CONTEXT-CHECK-SKIPPED"
     assert f1[0]["level"] == "INFO"
 
     # Overflow
     f2 = check_context_length(records, tok, 10, None)
-    assert f2[0]["id"] == "context_overflow"
+    assert f2[0]["id"] == "TP-PRE-CONTEXT-OVERFLOW"
     assert f2[0]["level"] == "WARN"
 
     # No overflow
@@ -90,12 +90,12 @@ def test_check_preflight():
     records, malformed = load_jsonl(FIXTURES_DIR / "malformed.jsonl")
     res = check_preflight(records, malformed)
     assert res["verdict"] == "FAIL"
-    assert res["findings"][0]["id"] == "malformed_jsonl"
+    assert res["findings"][0]["id"] == "TP-PRE-MALFORMED-JSONL"
 
     records, malformed = load_jsonl(FIXTURES_DIR / "clean.jsonl")
     res = check_preflight(records, malformed)
     assert res["verdict"] == "PASS"
-    assert res["findings"][-1]["id"] == "preflight_ok"
+    assert res["findings"][-1]["id"] == "TP-PRE-OK"
 
 def test_preflight_api():
     res = preflight(FIXTURES_DIR / "clean.jsonl")

@@ -71,11 +71,15 @@ trainproof epoch examples/gallery/lr_hot/trainer_state.json --format hf
 ```
 
 ```text
+========================================
+TRAINPROOF VERDICT
+========================================
 [FAIL] Critical checks failed:
-  [FAIL] Loss curve is diverging.
+  [FAIL] TP-DIVERGE: Loss curve is diverging.
          Evidence: End loss 7.492 vs Min loss 1.398
-  [WARN] Gradient norm spikes detected.
+  [WARN] TP-GRAD-SPIKE: Gradient norm spikes detected.
          Evidence: Max gn 2649.75 > 10.0x median (0.55)
+========================================
 ```
 
 ## Why this exists
@@ -147,14 +151,16 @@ trainproof compare examples/gallery/healthy/trainer_state.json examples/gallery/
 trainproof compare examples/gallery/healthy/trainer_state.json examples/gallery/lr_hot/trainer_state.json examples/gallery/bad_labels/trainer_state.json
 ```
 
+*(Note: As of v0.8.0, all text outputs include stable TP-* rule IDs. This is a breaking change for text-parsers; use --json instead).*
+
 ```text
 ========================================
 TRAINPROOF VERDICT
 ========================================
 [FAIL] Critical checks failed:
-  [FAIL] loss floor ratio exceeded limit
+  [FAIL] TP-FLOOR-RATIO: loss floor ratio exceeded limit
          Evidence: Run floor 5.592 vs Baseline floor 0.937 (ratio 6.0x > 2.0)
-  [FAIL] end loss ratio exceeded limit
+  [FAIL] TP-END-RATIO: end loss ratio exceeded limit
          Evidence: Run end 5.750 vs Baseline end 1.082 (ratio 5.3x > 2.0)
 ========================================
 ```
@@ -246,6 +252,23 @@ TRAINPROOF VERDICT
 Auto-detected; override with `--format hf|coqui|jsonl|csv`. TensorBoard event
 files are planned (Lightning console captures are TTY dumps, not logs, and
 will not be supported).
+
+## For AI coding agents
+
+If you are a coding agent (Claude Code, Codex, Cursor, ...) checking a
+training project on a user's behalf:
+
+- Run `trainproof doctor . --json` from the project root. It discovers
+  training logs, judges them, and prints one JSON document: `schema_version`,
+  `trainproof_version`, per-file reports, and `worst_verdict`.
+- Every finding carries a stable `id` (e.g. `TP-DIVERGE`, `TP-DEAD-RUN`) —
+  look ids up in [RULES.md](RULES.md) for what fired and what it does NOT
+  mean. Parse ids, never message text.
+- Exit code non-zero means do not let your user celebrate the run.
+- A `TP-PASS` verdict lists which checks ran and which were skipped for lack
+  of data — do not report stability of anything in the skipped list.
+- These verdicts are deterministic threshold rules, not model judgments.
+  Relay them as measurements with their cited evidence, not as opinions.
 
 ## Philosophy
 

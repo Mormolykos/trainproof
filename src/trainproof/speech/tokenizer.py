@@ -10,7 +10,7 @@ def load_tokenizer(model_path: str):
     try:
         import sentencepiece as spm
     except ImportError:
-        return None, {"level": "FAIL",
+        return None, {"id": "TP-TOK-SPM-MISSING", "level": "FAIL",
                       "message": "sentencepiece is not installed - cannot lint this tokenizer.",
                       "evidence": "pip install sentencepiece"}
     try:
@@ -18,7 +18,7 @@ def load_tokenizer(model_path: str):
         sp.load(model_path)
         return sp, None
     except Exception as e:
-        return None, {"level": "FAIL",
+        return None, {"id": "TP-TOK-LOAD-FAIL", "level": "FAIL",
                       "message": "Failed to load SentencePiece model.",
                       "evidence": f"{model_path}: {e}"}
 
@@ -31,7 +31,7 @@ def check_tokenizer(model_path: str | Path, transcripts_path: str | Path) -> dic
     
     path = Path(transcripts_path)
     if not path.exists():
-        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "Transcripts file not found.", "evidence": str(transcripts_path)}]}
+        return {"verdict": "FAIL", "findings": [{"id": "TP-TOK-NO-TRANSCRIPTS", "level": "FAIL", "message": "Transcripts file not found.", "evidence": str(transcripts_path)}]}
         
     lines = path.read_text(encoding="utf-8").splitlines()
     total_tokens = 0
@@ -69,25 +69,25 @@ def check_tokenizer(model_path: str | Path, transcripts_path: str | Path) -> dic
 
     oov_rate = total_unks / max(1, total_tokens)
     if oov_rate > rules.MAX_OOV_RATE:
-        findings.append({"level": "FAIL", "message": "High OOV (Out-Of-Vocabulary) rate.", "evidence": f"{oov_rate*100:.3f}% > {rules.MAX_OOV_RATE*100:.3f}%"})
+        findings.append({"id": "TP-TOK-HIGH-OOV", "level": "FAIL", "message": "High OOV (Out-Of-Vocabulary) rate.", "evidence": f"{oov_rate*100:.3f}% > {rules.MAX_OOV_RATE*100:.3f}%"})
         verdict = "FAIL"
         
     coverage = 1.0 - oov_rate
     if coverage < rules.MIN_VOCAB_COVERAGE:
-        findings.append({"level": "WARN", "message": "Vocabulary coverage is below recommended threshold.", "evidence": f"{coverage*100:.3f}% < {rules.MIN_VOCAB_COVERAGE*100:.3f}%"})
+        findings.append({"id": "TP-TOK-LOW-COVERAGE", "level": "WARN", "message": "Vocabulary coverage is below recommended threshold.", "evidence": f"{coverage*100:.3f}% < {rules.MIN_VOCAB_COVERAGE*100:.3f}%"})
         if verdict == "PASS": verdict = "WARN"
 
     if total_duration > 0:
         tps = total_tokens / total_duration
         if tps > rules.MAX_TOKENS_PER_SEC:
-            findings.append({"level": "WARN", "message": "High tokens per second of audio (possible sequence length blowout).", "evidence": f"{tps:.1f} tokens/sec > {rules.MAX_TOKENS_PER_SEC}"})
+            findings.append({"id": "TP-TOK-HIGH-TPS", "level": "WARN", "message": "High tokens per second of audio (possible sequence length blowout).", "evidence": f"{tps:.1f} tokens/sec > {rules.MAX_TOKENS_PER_SEC}"})
             if verdict == "PASS": verdict = "WARN"
             
     if suspicious_splits > len(lines) * 0.01:
-        findings.append({"level": "WARN", "message": "Suspicious splits detected on numbers/dates.", "evidence": f"{suspicious_splits} instances."})
+        findings.append({"id": "TP-TOK-SUSPICIOUS-SPLIT", "level": "WARN", "message": "Suspicious splits detected on numbers/dates.", "evidence": f"{suspicious_splits} instances."})
         if verdict == "PASS": verdict = "WARN"
 
     if verdict == "PASS":
-        findings.append({"level": "PASS", "message": "Tokenizer vocabulary coverage and splits look healthy.", "evidence": f"{total_tokens} tokens evaluated."})
+        findings.append({"id": "TP-TOK-PASS", "level": "PASS", "message": "Tokenizer vocabulary coverage and splits look healthy.", "evidence": f"{total_tokens} tokens evaluated."})
 
     return {"verdict": verdict, "findings": findings}

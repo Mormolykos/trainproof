@@ -46,7 +46,7 @@ def check_empty_rows(records, text_field):
         if not txt.strip():
             empties.append(i)
     if empties:
-        return [{"id": "empty_text", "level": "FAIL", "message": "Empty or whitespace-only text found.", "evidence": f"{len(empties)} records (indices {empties[:3]}...)"}]
+        return [{"id": "TP-PRE-EMPTY-TEXT", "level": "FAIL", "message": "Empty or whitespace-only text found.", "evidence": f"{len(empties)} records (indices {empties[:3]}...)"}]
     return []
 
 def check_duplicates(records, text_field):
@@ -61,36 +61,36 @@ def check_duplicates(records, text_field):
         else:
             seen.add(txt)
     if dupes > 0:
-        return [{"id": "duplicate_text", "level": "WARN", "message": "Exact duplicate text found.", "evidence": f"{dupes} duplicate records of {len(distinct_dupes)} distinct texts"}]
+        return [{"id": "TP-PRE-DUPLICATE-TEXT", "level": "WARN", "message": "Exact duplicate text found.", "evidence": f"{dupes} duplicate records of {len(distinct_dupes)} distinct texts"}]
     return []
 
 def check_tokenizer(tokenizer):
     findings = []
     has_eos = getattr(tokenizer, "eos_token", None) is not None
     if not has_eos:
-        findings.append({"id": "missing_eos_token", "level": "FAIL", "message": "tokenizer has no eos_token - training has no stop signal", "evidence": ""})
+        findings.append({"id": "TP-PRE-MISSING-EOS-TOKEN", "level": "FAIL", "message": "tokenizer has no eos_token - training has no stop signal", "evidence": ""})
     
     has_pad = getattr(tokenizer, "pad_token", None) is not None
     if not has_pad:
-        findings.append({"id": "missing_pad_token", "level": "WARN", "message": "tokenizer has no pad_token", "evidence": ""})
+        findings.append({"id": "TP-PRE-MISSING-PAD-TOKEN", "level": "WARN", "message": "tokenizer has no pad_token", "evidence": ""})
         
     if has_eos and has_pad:
         eos_id = getattr(tokenizer, "eos_token_id", None)
         pad_id = getattr(tokenizer, "pad_token_id", None)
         if eos_id is not None and pad_id is not None and eos_id == pad_id:
-            findings.append({"id": "pad_equals_eos", "level": "WARN", "message": "pad_token_id equals eos_token_id", "evidence": f"Shared ID: {eos_id}"})
+            findings.append({"id": "TP-PRE-PAD-EQUALS-EOS", "level": "WARN", "message": "pad_token_id equals eos_token_id", "evidence": f"Shared ID: {eos_id}"})
             
     has_bos = getattr(tokenizer, "bos_token", None) is not None
     if has_bos:
-        findings.append({"id": "bos_token_info", "level": "INFO", "message": "bos_token is present", "evidence": str(getattr(tokenizer, "bos_token", ""))})
+        findings.append({"id": "TP-PRE-BOS-TOKEN-INFO", "level": "INFO", "message": "bos_token is present", "evidence": str(getattr(tokenizer, "bos_token", ""))})
     else:
-        findings.append({"id": "bos_token_info", "level": "INFO", "message": "no bos_token (normal for many model families)", "evidence": ""})
+        findings.append({"id": "TP-PRE-BOS-TOKEN-INFO", "level": "INFO", "message": "no bos_token (normal for many model families)", "evidence": ""})
         
     return findings
 
 def check_context_length(records, tokenizer, max_len, text_field):
     if max_len is None:
-        return [{"id": "context_check_skipped", "level": "INFO", "message": "pass --max-len to enable", "evidence": ""}]
+        return [{"id": "TP-PRE-CONTEXT-CHECK-SKIPPED", "level": "INFO", "message": "pass --max-len to enable", "evidence": ""}]
         
     overflows = 0
     max_found = 0
@@ -109,14 +109,14 @@ def check_context_length(records, tokenizer, max_len, text_field):
             overflows += 1
             
     if overflows > 0:
-        return [{"id": "context_overflow", "level": "WARN", "message": f"Records exceed max context length of {max_len}", "evidence": f"{overflows} records overflow. Largest token count: {max_found}"}]
+        return [{"id": "TP-PRE-CONTEXT-OVERFLOW", "level": "WARN", "message": f"Records exceed max context length of {max_len}", "evidence": f"{overflows} records overflow. Largest token count: {max_found}"}]
     return []
 
 def check_preflight(records, malformed=None, tokenizer=None, max_len=None, text_field=None):
     findings = []
     
     if malformed:
-        findings.append({"id": "malformed_jsonl", "level": "FAIL", "message": "JSONL parsing failed.", "evidence": f"{len(malformed)} broken lines. First bad line number: {malformed[0][0]}"})
+        findings.append({"id": "TP-PRE-MALFORMED-JSONL", "level": "FAIL", "message": "JSONL parsing failed.", "evidence": f"{len(malformed)} broken lines. First bad line number: {malformed[0][0]}"})
         
     findings.extend(check_empty_rows(records, text_field))
     findings.extend(check_duplicates(records, text_field))
@@ -134,7 +134,7 @@ def check_preflight(records, malformed=None, tokenizer=None, max_len=None, text_
         verdict = "WARN"
     else:
         verdict = "PASS"
-        findings.append({"id": "preflight_ok", "level": "PASS", "message": "Pre-flight checks passed.", "evidence": ""})
+        findings.append({"id": "TP-PRE-OK", "level": "PASS", "message": "Pre-flight checks passed.", "evidence": ""})
         
     return {"verdict": verdict, "findings": findings}
 

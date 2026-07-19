@@ -18,8 +18,10 @@ def print_verdict_console(verdict: str, findings: list[dict[str, Any]]):
     for finding in findings:
         level = finding.get("level", "INFO")
         msg = finding.get("message", "")
+        rid = finding.get("id", "")
+        prefix = f"[{level}] {rid}: " if rid else f"[{level}] "
         evidence = finding.get("evidence", "")
-        print(f"  [{level}] {msg}")
+        print(f"  {prefix}{msg}")
         if evidence:
             print(f"         Evidence: {evidence}")
             
@@ -49,8 +51,10 @@ def write_html_report(report: dict[str, Any], path: str | Path) -> None:
     for finding in findings:
         level = finding.get("level", "INFO")
         msg = H.escape(str(finding.get("message", "")))
+        rid = H.escape(str(finding.get("id", "")))
+        prefix = f"[{level}] {rid}: " if rid else f"[{level}] "
         evidence = H.escape(str(finding.get("evidence", "")))
-        doc += f'<div class="card"><div class="level-{level}">[{level}] {msg}</div><div class="evidence">Evidence: {evidence}</div></div>\n'
+        doc += f'<div class="card"><div class="level-{level}">{prefix}{msg}</div><div class="evidence">Evidence: {evidence}</div></div>\n'
         
     doc += "</div></body></html>"
     Path(path).write_text(doc, encoding="utf-8")
@@ -72,8 +76,10 @@ def print_doctor_autopsy(filepath: str, fmt: str, num_records: int, step_range: 
         elif level == "FAIL": fails += 1
         
         msg = finding.get("message", "")
+        rid = finding.get("id", "")
+        prefix = f"[{level}] {rid}: " if rid else f"[{level}] "
         evidence = finding.get("evidence", "")
-        print(f"[{level}] {msg}")
+        print(f"{prefix}{msg}")
         if evidence:
             print(f"       Evidence: {evidence}")
         print()

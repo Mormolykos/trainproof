@@ -9,14 +9,7 @@ def check_records(records: list[dict]) -> dict[str, Any]:
     verdict = "PASS"
     
     if not records:
-        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "No valid log records found.", "evidence": ""}]}
-
-    # Find relevant keys
-    def get_val(row, aliases):
-        for a in aliases:
-            for k in row:
-                if a in k: return row[k]
-        return None
+        return {"verdict": "FAIL", "findings": [{"id": "TP-NO-RECORDS", "level": "FAIL", "message": "No valid log records found.", "evidence": ""}]}
 
     losses = []
     loss_steps = []  # kept aligned with losses; records may lack a loss field
@@ -26,12 +19,12 @@ def check_records(records: list[dict]) -> dict[str, Any]:
     time_steps = []
 
     for i, r in enumerate(records):
-        step = get_val(r, ["step", "iter"])
+        step = r.get("step")
         step = i if step is None else step
-        loss = get_val(r, ["loss", "train_loss"])
-        lr = get_val(r, ["lr", "learning_rate"])
-        gn = get_val(r, ["grad_norm", "gnorm", "grad"])
-        t = get_val(r, ["elapsed", "time", "timestamp"])
+        loss = r.get("loss")
+        lr = r.get("lr")
+        gn = r.get("grad_norm")
+        t = r.get("time")
 
         if loss is not None:
             losses.append(loss)
@@ -43,12 +36,12 @@ def check_records(records: list[dict]) -> dict[str, Any]:
             time_steps.append(step)
 
     if not losses:
-        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "Could not find loss metric in logs.", "evidence": ""}]}
+        return {"verdict": "FAIL", "findings": [{"id": "TP-NO-LOSS", "level": "FAIL", "message": "Could not find loss metric in logs.", "evidence": ""}]}
         
     # Check NaN / Inf in loss
     nan_steps = [s for s, l in zip(loss_steps, losses) if math.isnan(l) or math.isinf(l)]
     if nan_steps:
-        findings.append({"level": "FAIL", "message": "NaN or Inf detected in loss.", "evidence": f"Steps: {nan_steps[:5]}..."})
+        findings.append({"id": "TP-NAN", "level": "FAIL", "message": "NaN or Inf detected in loss.", "evidence": f"Steps: {nan_steps[:5]}..."})
         verdict = "FAIL"
         
     # Check flat loss
@@ -57,13 +50,13 @@ def check_records(records: list[dict]) -> dict[str, Any]:
         mean_loss = sum(valid_losses) / len(valid_losses)
         std_loss = math.sqrt(sum((l - mean_loss)**2 for l in valid_losses) / len(valid_losses))
         if mean_loss > 0 and (std_loss / mean_loss) < rules.MIN_LOSS_VARIATION:
-            findings.append({"level": "FAIL", "message": "Loss curve is completely flat (dead run).", "evidence": f"Variation {std_loss/mean_loss:.5f} < {rules.MIN_LOSS_VARIATION}"})
+            findings.append({"id": "TP-FLAT", "level": "FAIL", "message": "Loss curve is completely flat (dead run).", "evidence": f"Variation {std_loss/mean_loss:.5f} < {rules.MIN_LOSS_VARIATION}"})
             verdict = "FAIL"
             
         # Check divergence
         min_loss = min(valid_losses)
         if min_loss > 0 and valid_losses[-1] > min_loss * rules.MAX_LOSS_DIVERGENCE_RATIO:
-            findings.append({"level": "FAIL", "message": "Loss curve is diverging.", "evidence": f"End loss {valid_losses[-1]:.3f} vs Min loss {min_loss:.3f}"})
+            findings.append({"id": "TP-DIVERGE", "level": "FAIL", "message": "Loss curve is diverging.", "evidence": f"End loss {valid_losses[-1]:.3f} vs Min loss {min_loss:.3f}"})
             verdict = "FAIL"
 
         # Check no-improvement (dead run): robust start-vs-end median comparison
@@ -72,7 +65,7 @@ def check_records(records: list[dict]) -> dict[str, Any]:
             start_med = sorted(valid_losses[:w])[w // 2]
             end_med = sorted(valid_losses[-w:])[w // 2]
             if start_med > 0 and end_med >= start_med * (1 - rules.MIN_LOSS_IMPROVEMENT):
-                findings.append({"level": "FAIL", "message": "Loss never improved over the run (dead run).",
+                findings.append({"id": "TP-DEAD-RUN", "level": "FAIL", "message": "Loss never improved over the run (dead run).",
                                  "evidence": f"median of first {w} losses {start_med:.3f} vs last {w} {end_med:.3f} (needs >={rules.MIN_LOSS_IMPROVEMENT*100:.0f}% improvement)"})
                 verdict = "FAIL"
 
@@ -84,7 +77,7 @@ def check_records(records: list[dict]) -> dict[str, Any]:
         if median_gn > 0:
             spikes = [g for g in valid_gns if g > median_gn * rules.MAX_GRAD_NORM_SPIKE_RATIO]
             if spikes:
-                findings.append({"level": "WARN", "message": "Gradient norm spikes detected.", "evidence": f"Max gn {max(spikes):.2f} > {rules.MAX_GRAD_NORM_SPIKE_RATIO}x median ({median_gn:.2f})"})
+                findings.append({"id": "TP-GRAD-SPIKE", "level": "WARN", "message": "Gradient norm spikes detected.", "evidence": f"Max gn {max(spikes):.2f} > {rules.MAX_GRAD_NORM_SPIKE_RATIO}x median ({median_gn:.2f})"})
                 if verdict == "PASS": verdict = "WARN"
 
     # Check LR
@@ -92,10 +85,10 @@ def check_records(records: list[dict]) -> dict[str, Any]:
         zeros = sum(1 for lr in lrs if lr <= 0)
         zero_frac = zeros / len(lrs)
         if zero_frac >= rules.ZERO_LR_FAIL_FRACTION:
-            findings.append({"level": "FAIL", "message": "Learning rate is zero for the entire run - the optimizer never steps.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"})
+            findings.append({"id": "TP-ZERO-LR", "level": "FAIL", "message": "Learning rate is zero for the entire run - the optimizer never steps.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"})
             verdict = "FAIL"
         elif zero_frac > rules.MAX_ZERO_LR_FRACTION:
-            findings.append({"level": "WARN", "message": "Learning rate is zero for a large fraction of the run.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"})
+            findings.append({"id": "TP-ZERO-LR-PARTIAL", "level": "WARN", "message": "Learning rate is zero for a large fraction of the run.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"})
             if verdict == "PASS": verdict = "WARN"
 
     # Throughput — only when the log carries a time column; no guessing
@@ -104,13 +97,13 @@ def check_records(records: list[dict]) -> dict[str, Any]:
         steps_covered = time_steps[-1] - time_steps[0]
         if steps_covered > 0:
             rate = steps_covered / span
-            findings.append({"level": "INFO", "message": "Throughput measured from log timestamps.",
+            findings.append({"id": "TP-THROUGHPUT", "level": "INFO", "message": "Throughput measured from log timestamps.",
                              "evidence": f"{rate:.2f} steps/sec over {span:.0f}s observed."})
 
     # Telemetry Rules
     step_times = []
     for r in records:
-        st = get_val(r, ["step_time"])
+        st = r.get("step_time")
         if st is not None and not math.isnan(st) and not math.isinf(st):
             step_times.append(st)
             
@@ -125,16 +118,16 @@ def check_records(records: list[dict]) -> dict[str, Any]:
         med_last_20 = last_20[len(last_20)//2] if last_20 else 0
         
         if med_first_50 > 0 and med_last_20 > rules.STEP_TIME_CLIFF_RATIO * med_first_50:
-            findings.append({"level": "WARN", "message": "Step time cliff detected: recent steps are significantly slower.",
+            findings.append({"id": "TP-STEP-CLIFF", "level": "WARN", "message": "Step time cliff detected: recent steps are significantly slower.",
                              "evidence": f"median recent step_time {med_last_20:.2f}s > {rules.STEP_TIME_CLIFF_RATIO}x median early step_time ({med_first_50:.2f}s)"})
             if verdict == "PASS": verdict = "WARN"
 
     valid_loader_fractions = []
     gpu_utils = []
     for r in records:
-        st = get_val(r, ["step_time"])
-        lt = get_val(r, ["loader_time"])
-        gu = get_val(r, ["gpu_util"])
+        st = r.get("step_time")
+        lt = r.get("loader_time")
+        gu = r.get("gpu_util")
         if st is not None and lt is not None and st > 0:
             valid_loader_fractions.append(lt / st)
         if gu is not None and not math.isnan(gu) and not math.isinf(gu):
@@ -143,22 +136,41 @@ def check_records(records: list[dict]) -> dict[str, Any]:
     if valid_loader_fractions:
         med_frac = sorted(valid_loader_fractions)[len(valid_loader_fractions)//2]
         if med_frac > rules.LOADER_FRACTION_MAX:
-            findings.append({"level": "WARN", "message": "Dataloader stall detected: spending too much time loading data.",
+            findings.append({"id": "TP-LOADER-BOUND", "level": "WARN", "message": "Dataloader stall detected: spending too much time loading data.",
                              "evidence": f"median loader_time/step_time {med_frac*100:.1f}% > {rules.LOADER_FRACTION_MAX*100:.1f}%"})
             if verdict == "PASS": verdict = "WARN"
             
     if gpu_utils:
         med_gpu = sorted(gpu_utils)[len(gpu_utils)//2]
-        findings.append({"level": "INFO", "message": "GPU utilization context.",
+        findings.append({"id": "TP-GPU-UTIL", "level": "INFO", "message": "GPU utilization context.",
                          "evidence": f"median gpu_util {med_gpu:.1f}% observed."})
 
     if verdict == "PASS":
-        findings.append({"level": "PASS", "message": "Loss curve shows healthy shape, grad norms are stable.", "evidence": f"{len(valid_losses)} steps analyzed."})
+        groups_ran = ["loss-shape", "divergence", "dead-run"]
+        groups_skipped = []
+        if len(valid_gns) > 5:
+            groups_ran.append("grad-norm")
+        else:
+            groups_skipped.append("grad-norm")
+        if lrs:
+            groups_ran.append("lr")
+        else:
+            groups_skipped.append("lr")
+        if (len(times) >= 2 and times[-1] > times[0]) or (len(step_times) >= 10):
+            groups_ran.append("timing")
+        else:
+            groups_skipped.append("timing")
+            
+        msg = f"No mechanical failures detected. Ran: {', '.join(groups_ran)}."
+        if groups_skipped:
+            msg += f" Skipped (no data): {', '.join(groups_skipped)}."
+            
+        findings.append({"id": "TP-PASS", "level": "PASS", "message": msg, "evidence": f"{len(valid_losses)} steps analyzed."})
 
     return {"verdict": verdict, "findings": findings}
 
-def check_epoch(log_path: str | Path, fmt: str = "auto") -> dict[str, Any]:
-    records = parse_log_with_format(log_path, fmt)
+def check_epoch(log_path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> dict[str, Any]:
+    records = parse_log_with_format(log_path, fmt, mapping_overrides)
     if not records:
-        return {"verdict": "FAIL", "findings": [{"level": "FAIL", "message": "No valid log records found.", "evidence": str(log_path)}]}
+        return {"verdict": "FAIL", "findings": [{"id": "TP-NO-RECORDS", "level": "FAIL", "message": "No valid log records found.", "evidence": str(log_path)}]}
     return check_records(records)

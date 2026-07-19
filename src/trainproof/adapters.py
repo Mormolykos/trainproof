@@ -6,44 +6,73 @@ from datetime import datetime
 
 ANSI_ESCAPE_PATTERN = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
-def parse_hf_trainer_state(text: str) -> list[dict[str, float]]:
+CANONICAL_ALIASES = {
+    "loss": ["loss", "train_loss", "training_loss"],
+    "eval_loss": ["eval_loss", "val_loss", "validation_loss", "test_loss"],
+    "lr": ["lr", "learning_rate", "current_lr"],
+    "step": ["step", "iter", "iteration", "global_step"],
+    "grad_norm": ["grad_norm", "gnorm", "gradient_norm", "grad_l2"],
+    "time": ["time", "timestamp", "elapsed"],
+    "step_time": ["step_time", "seconds_per_step"],
+    "loader_time": ["loader_time", "data_time"],
+    "gpu_util": ["gpu_util"]
+}
+
+def _resolve_key(col_name: str, overrides: dict[str, str] = None) -> str | None:
+    if overrides is not None:
+        for canon, col in overrides.items():
+            if col.lower() == col_name.lower():
+                return canon
+    for canon, aliases in CANONICAL_ALIASES.items():
+        if col_name.lower() in aliases:
+            return canon
+    return None
+
+def parse_hf_trainer_state(text: str, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str]]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return []
+        return [], {}
         
     history = data.get("log_history", [])
     records = []
+    used_mapping = {}
+    
     for entry in history:
-        if "loss" not in entry:
-            continue
         record = {}
-        for k in ["loss", "grad_norm", "step"]:
-            if k in entry and entry[k] is not None:
+        for col_name, v in entry.items():
+            if v is None:
+                continue
+            canon = _resolve_key(col_name, mapping_overrides)
+            if canon:
                 try:
-                    record[k] = float(entry[k])
+                    record[canon] = float(v)
+                    used_mapping[canon] = col_name
                 except (ValueError, TypeError):
                     pass
-        if "learning_rate" in entry and entry["learning_rate"] is not None:
-            try:
-                record["lr"] = float(entry["learning_rate"])
-            except (ValueError, TypeError):
-                pass
-        records.append(record)
-    return records
+        if "loss" in record or "eval_loss" in record:
+            records.append(record)
+    return records, used_mapping
 
-def parse_coqui_trainer_log(text: str) -> list[dict[str, float]]:
+def parse_coqui_trainer_log(text: str, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str]]:
     text = ANSI_ESCAPE_PATTERN.sub('', text)
     records = []
-    current_record = None
+    used_mapping = {}
+    current_record = {}
     
+    def set_canon(col_name, val):
+        canon = _resolve_key(col_name, mapping_overrides)
+        if canon:
+            current_record[canon] = val
+            used_mapping[canon] = col_name
+
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
             
         if line.startswith("--> TIME:") and "-- GLOBAL_STEP:" in line:
-            if current_record is not None and "loss" in current_record:
+            if current_record and ("loss" in current_record or "eval_loss" in current_record):
                 records.append(current_record)
             current_record = {}
             
@@ -51,48 +80,55 @@ def parse_coqui_trainer_log(text: str) -> list[dict[str, float]]:
             if m_time:
                 try:
                     dt = datetime.strptime(m_time.group(1), "%Y-%m-%d %H:%M:%S")
-                    current_record["time"] = dt.timestamp()
+                    set_canon("time", dt.timestamp())
                 except ValueError:
                     pass
                     
             m_step = re.search(r'GLOBAL_STEP:\s*(\d+)', line)
             if m_step:
-                current_record["step"] = float(m_step.group(1))
+                set_canon("step", float(m_step.group(1)))
                 
         elif current_record is not None and line.startswith("| > "):
             parts = line[4:].split(":")
             if len(parts) >= 2:
                 key = parts[0].strip()
-                if key in ("loss", "current_lr"):
-                    val_str = parts[1].strip().split()[0]
-                    try:
-                        val = float(val_str)
-                        if key == "loss":
-                            current_record["loss"] = val
-                        elif key == "current_lr":
-                            current_record["lr"] = val
-                    except ValueError:
-                        pass
+                val_str = parts[1].strip().split()[0]
+                try:
+                    val = float(val_str)
+                    set_canon(key, val)
+                except ValueError:
+                    pass
                         
-    if current_record is not None and "loss" in current_record:
+    if current_record and ("loss" in current_record or "eval_loss" in current_record):
         records.append(current_record)
         
-    return records
+    return records, used_mapping
 
-def parse_generic_log(text: str, is_csv: bool) -> list[dict[str, float]]:
+def parse_generic_log(text: str, is_csv: bool, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str]]:
     records = []
+    used_mapping = {}
+    
     if is_csv:
         reader = csv.DictReader(text.splitlines())
         if reader.fieldnames:
+            resolved_keys = {}
+            for col in reader.fieldnames:
+                canon = _resolve_key(col.strip(), mapping_overrides)
+                if canon:
+                    resolved_keys[col] = canon
+                    used_mapping[canon] = col
+                    
             for row in reader:
                 norm_row = {}
                 for k, v in row.items():
                     if v is None or not str(v).strip():
                         continue
-                    try:
-                        norm_row[k.strip().lower()] = float(v)
-                    except (ValueError, TypeError):
-                        pass
+                    canon = resolved_keys.get(k)
+                    if canon:
+                        try:
+                            norm_row[canon] = float(v)
+                        except (ValueError, TypeError):
+                            pass
                 if norm_row:
                     records.append(norm_row)
     else:
@@ -102,17 +138,22 @@ def parse_generic_log(text: str, is_csv: bool) -> list[dict[str, float]]:
             try:
                 data = json.loads(line)
                 norm_row = {}
-                for k, v in data.items():
-                    try:
-                        norm_row[k.strip().lower()] = float(v)
-                    except (ValueError, TypeError):
-                        pass
-                records.append(norm_row)
+                for col_name, v in data.items():
+                    col_strip = col_name.strip()
+                    canon = _resolve_key(col_strip, mapping_overrides)
+                    if canon:
+                        try:
+                            norm_row[canon] = float(v)
+                            used_mapping[canon] = col_strip
+                        except (ValueError, TypeError):
+                            pass
+                if norm_row:
+                    records.append(norm_row)
             except Exception:
                 pass
-    return records
+    return records, used_mapping
 
-def parse_log_with_format_info(path: str | Path, fmt: str = "auto") -> tuple[list[dict[str, float]], str]:
+def parse_log_with_format_info(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], str, dict[str, str]]:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Log file not found: {path}")
@@ -132,16 +173,20 @@ def parse_log_with_format_info(path: str | Path, fmt: str = "auto") -> tuple[lis
             fmt = "jsonl"
             
     if fmt == "hf":
-        return parse_hf_trainer_state(text), fmt
+        records, mapping = parse_hf_trainer_state(text, mapping_overrides)
+        return records, fmt, mapping
     elif fmt == "coqui":
-        return parse_coqui_trainer_log(text), fmt
+        records, mapping = parse_coqui_trainer_log(text, mapping_overrides)
+        return records, fmt, mapping
     elif fmt == "csv":
-        return parse_generic_log(text, is_csv=True), fmt
+        records, mapping = parse_generic_log(text, True, mapping_overrides)
+        return records, fmt, mapping
     elif fmt == "jsonl":
-        return parse_generic_log(text, is_csv=False), fmt
+        records, mapping = parse_generic_log(text, False, mapping_overrides)
+        return records, fmt, mapping
     else:
         raise ValueError(f"Unknown format: {fmt}")
 
-def parse_log_with_format(path: str | Path, fmt: str = "auto") -> list[dict[str, float]]:
-    records, _ = parse_log_with_format_info(path, fmt)
+def parse_log_with_format(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> list[dict[str, float]]:
+    records, _, _ = parse_log_with_format_info(path, fmt, mapping_overrides)
     return records
