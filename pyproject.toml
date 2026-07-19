@@ -1,6 +1,6 @@
 [project]
 name = "trainproof"
-version = "0.5.0"
+version = "0.6.0"
 description = "A deterministic linter for ML training runs: dataset, tokenizer, and epoch logs."
 authors = [{name = "Panagiotis (Panos) Gkilis", email = "bedvibe@bedvibe.studio"}]
 readme = "README.md"

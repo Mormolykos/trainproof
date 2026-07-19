@@ -26,6 +26,41 @@ answering a single question — *if it were gone, would someone lose GPU hours?*
 pip install trainproof
 ```
 
+## The Doctor (v0.6)
+
+"Why did my run diverge? Why is my loss flat? Did my dataset break?"
+
+Run the flagship zero-config autopsy on any directory. It discovers all training logs, parses them automatically, and delivers a plain-English diagnosis.
+
+```bash
+trainproof doctor .
+```
+
+```text
+============================================================
+FILE   : examples/gallery/healthy/trainer_state.json
+FORMAT : hf
+RECORDS: 16 (steps/epochs: 20..300)
+------------------------------------------------------------
+VERDICT: PASS
+------------------------------------------------------------
+[PASS] Loss curve shows healthy shape, grad norms are stable.
+       Evidence: 16 steps analyzed.
+
+------------------------------------------------------------
+1 checks passed, 0 warnings, 0 failures
+============================================================
+
+What this cannot tell you
+-------------------------
+A passing report does not mean the run is good. These checks catch
+mechanical failures (divergence, NaN, flatline, spikes) from the log
+alone. They cannot detect a model learning the wrong thing - a run
+trained on corrupted data can look healthy here. For that, compare
+against a known-good baseline: trainproof compare <baseline> <run>
+```
+
+
 ## See a verdict in 60 seconds
 
 This repo ships the real logs of five QLoRA fine-tuning runs (Qwen2.5-3B,
@@ -77,7 +112,7 @@ famously fit random labels). **No single-run, loss-only rule can catch this
 class of failure** — its real signature is *relative*: a loss floor ~6x higher
 than a known-good run of the same task (5.59 vs 0.94).
 
-That finding produced v0.3: `trainproof compare <run> <baseline>` —
+That finding produced v0.3: `trainproof compare <baseline> <run...>` —
 deterministic ratio rules against the healthy baseline you already have —
 which catches `bad_labels` at a 6x loss-floor ratio, in 3 seeds out of 3.
 The full study was repeated with three random seeds (15 runs):
@@ -103,9 +138,13 @@ trainproof tokenizer my_tokenizer.model transcripts.txt
 #    LR sanity, throughput — from log files, any framework
 trainproof epoch logs/run.jsonl            # exit code 1 on FAIL: CI-ready
 
-# 4. Compare against a baseline
+# 4. Compare runs against a baseline (v0.6: BASELINE FIRST, then one or more runs
+#    — argument order changed from <run> <baseline> in v0.5 and earlier).
 #    Catch relative pathologies like the `bad_labels` run that evade single-run rules.
-trainproof compare examples/gallery/bad_labels/trainer_state.json examples/gallery/healthy/trainer_state.json
+trainproof compare examples/gallery/healthy/trainer_state.json examples/gallery/bad_labels/trainer_state.json
+
+# N-way: rank several runs against the same baseline in one table
+trainproof compare examples/gallery/healthy/trainer_state.json examples/gallery/lr_hot/trainer_state.json examples/gallery/bad_labels/trainer_state.json
 ```
 
 ```text

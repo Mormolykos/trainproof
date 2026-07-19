@@ -54,3 +54,58 @@ def write_html_report(report: dict[str, Any], path: str | Path) -> None:
         
     doc += "</div></body></html>"
     Path(path).write_text(doc, encoding="utf-8")
+
+def print_doctor_autopsy(filepath: str, fmt: str, num_records: int, step_range: str, verdict: str, findings: list[dict[str, Any]]):
+    print("=" * 60)
+    print(f"FILE   : {filepath}")
+    print(f"FORMAT : {fmt}")
+    print(f"RECORDS: {num_records} (steps/epochs: {step_range})")
+    print("-" * 60)
+    print(f"VERDICT: {verdict}")
+    print("-" * 60)
+    
+    passes = warns = fails = 0
+    for finding in findings:
+        level = finding.get("level", "INFO")
+        if level == "PASS": passes += 1
+        elif level == "WARN": warns += 1
+        elif level == "FAIL": fails += 1
+        
+        msg = finding.get("message", "")
+        evidence = finding.get("evidence", "")
+        print(f"[{level}] {msg}")
+        if evidence:
+            print(f"       Evidence: {evidence}")
+        print()
+        
+    print("-" * 60)
+    print(f"Findings: {passes} PASS, {warns} WARN, {fails} FAIL")
+    print("=" * 60)
+    print()
+
+def print_doctor_footer():
+    print("What this cannot tell you")
+    print("-" * 25)
+    print("A passing report does not mean the run is good. These checks catch")
+    print("mechanical failures (divergence, NaN, flatline, spikes) from the log")
+    print("alone. They cannot detect a model learning the wrong thing - a run")
+    print("trained on corrupted data can look healthy here. For that, compare")
+    print("against a known-good baseline: trainproof compare <baseline> <run>")
+    print()
+
+def print_compare_table(results: list[dict[str, Any]]):
+    if not results: return
+    name_len = max(len("RUN"), max((len(r["name"]) for r in results), default=0))
+    header = f"{'RUN':<{name_len}} | {'START':>8} | {'FLOOR':>8} | {'END':>8} | {'IMP %':>7} | {'VERDICT vs BASE'}"
+    print(header)
+    print("-" * len(header))
+    for r in results:
+        imp_str = f"{r['improvement']*100:.1f}%" if r.get('improvement') is not None else "N/A"
+        floor_str = f"{r['floor']:.3f}" if r.get('floor') is not None else "N/A"
+        start_str = f"{r['start']:.3f}" if r.get('start') is not None else "N/A"
+        end_str = f"{r['end']:.3f}" if r.get('end') is not None else "N/A"
+        verdict = r.get("verdict", "BASELINE")
+        row = f"{r['name']:<{name_len}} | {start_str:>8} | {floor_str:>8} | {end_str:>8} | {imp_str:>7} | {verdict}"
+        print(row)
+    print()
+
