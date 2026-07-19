@@ -64,3 +64,29 @@ def test_hf_callback_stop_on_fail():
     callback.on_log(None, state, control)
     assert callback.last_verdict == "FAIL"
     assert control.should_training_stop
+
+import time
+
+def test_hf_callback_step_time_injection():
+    callback = TrainproofCallback(policy="warn", check_every=10, min_points=10)
+    state = MockState()
+    control = MockControl()
+    
+    orig_time = time.monotonic
+    times = [100.0, 105.0]  # 5 seconds elapsed for 10 steps -> 0.5s/step
+    def mock_time(): return times.pop(0) if times else 105.0
+    
+    time.monotonic = mock_time
+    try:
+        callback.on_log(None, state, control)
+        
+        for i in range(10):
+            state.log_history.append({"loss": 1.0, "step": i, "learning_rate": 1e-4})
+        state.global_step = 10
+        
+        callback.on_log(None, state, control)
+        
+        assert 10 in callback.telemetry
+        assert callback.telemetry[10]["step_time"] == 0.5
+    finally:
+        time.monotonic = orig_time

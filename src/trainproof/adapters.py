@@ -112,7 +112,7 @@ def parse_generic_log(text: str, is_csv: bool) -> list[dict[str, float]]:
                 pass
     return records
 
-def parse_log_with_format(path: str | Path, fmt: str = "auto") -> list[dict[str, float]]:
+def parse_log_with_format_info(path: str | Path, fmt: str = "auto") -> tuple[list[dict[str, float]], str]:
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Log file not found: {path}")
@@ -132,12 +132,16 @@ def parse_log_with_format(path: str | Path, fmt: str = "auto") -> list[dict[str,
             fmt = "jsonl"
             
     if fmt == "hf":
-        return parse_hf_trainer_state(text)
+        return parse_hf_trainer_state(text), fmt
     elif fmt == "coqui":
-        return parse_coqui_trainer_log(text)
+        return parse_coqui_trainer_log(text), fmt
     elif fmt == "csv":
-        return parse_generic_log(text, is_csv=True)
+        return parse_generic_log(text, is_csv=True), fmt
     elif fmt == "jsonl":
-        return parse_generic_log(text, is_csv=False)
+        return parse_generic_log(text, is_csv=False), fmt
     else:
         raise ValueError(f"Unknown format: {fmt}")
+
+def parse_log_with_format(path: str | Path, fmt: str = "auto") -> list[dict[str, float]]:
+    records, _ = parse_log_with_format_info(path, fmt)
+    return records

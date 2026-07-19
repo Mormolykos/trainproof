@@ -7,3 +7,5 @@ dist/
 build/
 .venv/
 recon/
+
+release.ps1

@@ -107,6 +107,51 @@ def check_records(records: list[dict]) -> dict[str, Any]:
             findings.append({"level": "INFO", "message": "Throughput measured from log timestamps.",
                              "evidence": f"{rate:.2f} steps/sec over {span:.0f}s observed."})
 
+    # Telemetry Rules
+    step_times = []
+    for r in records:
+        st = get_val(r, ["step_time"])
+        if st is not None and not math.isnan(st) and not math.isinf(st):
+            step_times.append(st)
+            
+    if len(step_times) >= 10:
+        first_50_idx = max(1, len(step_times) // 2)
+        last_20_idx = len(step_times) - max(1, int(len(step_times) * 0.2))
+        
+        first_50 = sorted(step_times[:first_50_idx])
+        last_20 = sorted(step_times[last_20_idx:])
+        
+        med_first_50 = first_50[len(first_50)//2] if first_50 else 0
+        med_last_20 = last_20[len(last_20)//2] if last_20 else 0
+        
+        if med_first_50 > 0 and med_last_20 > rules.STEP_TIME_CLIFF_RATIO * med_first_50:
+            findings.append({"level": "WARN", "message": "Step time cliff detected: recent steps are significantly slower.",
+                             "evidence": f"median recent step_time {med_last_20:.2f}s > {rules.STEP_TIME_CLIFF_RATIO}x median early step_time ({med_first_50:.2f}s)"})
+            if verdict == "PASS": verdict = "WARN"
+
+    valid_loader_fractions = []
+    gpu_utils = []
+    for r in records:
+        st = get_val(r, ["step_time"])
+        lt = get_val(r, ["loader_time"])
+        gu = get_val(r, ["gpu_util"])
+        if st is not None and lt is not None and st > 0:
+            valid_loader_fractions.append(lt / st)
+        if gu is not None and not math.isnan(gu) and not math.isinf(gu):
+            gpu_utils.append(gu)
+            
+    if valid_loader_fractions:
+        med_frac = sorted(valid_loader_fractions)[len(valid_loader_fractions)//2]
+        if med_frac > rules.LOADER_FRACTION_MAX:
+            findings.append({"level": "WARN", "message": "Dataloader stall detected: spending too much time loading data.",
+                             "evidence": f"median loader_time/step_time {med_frac*100:.1f}% > {rules.LOADER_FRACTION_MAX*100:.1f}%"})
+            if verdict == "PASS": verdict = "WARN"
+            
+    if gpu_utils:
+        med_gpu = sorted(gpu_utils)[len(gpu_utils)//2]
+        findings.append({"level": "INFO", "message": "GPU utilization context.",
+                         "evidence": f"median gpu_util {med_gpu:.1f}% observed."})
+
     if verdict == "PASS":
         findings.append({"level": "PASS", "message": "Loss curve shows healthy shape, grad norms are stable.", "evidence": f"{len(valid_losses)} steps analyzed."})
 

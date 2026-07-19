@@ -40,3 +40,29 @@ def test_watch_poll_once(tmp_path: Path):
     assert verdict3 == "FAIL"
     assert changed3
     assert n3 == 25
+
+from unittest.mock import patch
+from trainproof.watch import watch_loop
+
+def test_watch_stall_warning(tmp_path, capsys):
+    log_file = tmp_path / "test.jsonl"
+    log_file.write_text("dummy")
+    
+    times = [100.0, 100.0, 500.0, 500.0]
+    def mock_time(): return times.pop(0) if times else 500.0
+    
+    sleep_calls = [0]
+    def mock_sleep(secs):
+        if sleep_calls[0] == 0:
+            sleep_calls[0] += 1
+            return
+        raise KeyboardInterrupt()
+        
+    with patch("time.monotonic", mock_time), patch("time.sleep", mock_sleep):
+        try:
+            watch_loop(log_file, interval=10, stall_timeout=300)
+        except SystemExit:
+            pass
+            
+    out, err = capsys.readouterr()
+    assert "No log growth for 300s" in out

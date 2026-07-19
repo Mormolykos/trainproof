@@ -38,10 +38,31 @@ def poll_once(path: str | Path, fmt: str, prev_verdict: str | None) -> tuple[str
         
     return (verdict, changed, n_records)
 
-def watch_loop(path: str | Path, interval: int = 10, fmt: str = "auto", until_fail: bool = False):
+import os
+
+def watch_loop(path: str | Path, interval: int = 10, fmt: str = "auto", until_fail: bool = False, stall_timeout: int = 300):
     prev_verdict = None
+    last_size = -1
+    last_change_time = time.monotonic()
+    stall_warned = False
+    
     try:
         while True:
+            try:
+                curr_size = os.path.getsize(path)
+            except OSError:
+                curr_size = -1
+                
+            now = time.monotonic()
+            if curr_size != last_size and curr_size != -1:
+                last_size = curr_size
+                last_change_time = now
+                stall_warned = False
+            else:
+                if not stall_warned and (now - last_change_time) > stall_timeout:
+                    print(f"\n[WARN] No log growth for {stall_timeout}s - training may be stalled (dataloader deadlock, crashed process, or saving a huge checkpoint).")
+                    stall_warned = True
+
             verdict, changed, n = poll_once(path, fmt, prev_verdict)
             if verdict is not None:
                 prev_verdict = verdict

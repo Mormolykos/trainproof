@@ -1,3 +1,4 @@
+import time
 from trainproof.epoch import check_records
 
 def _convert_state_to_records(state) -> list[dict]:
@@ -30,6 +31,14 @@ except ImportError:
 else:
     _HAS_TRANSFORMERS = True
 
+try:
+    import pynvml
+    pynvml.nvmlInit()
+    _HAS_PYNVML = True
+except Exception:
+    _HAS_PYNVML = False
+
+
 
 class TrainproofCallback(TrainerCallback):
     """Judge a live HuggingFace training run with trainproof's deterministic rules.
@@ -55,13 +64,41 @@ class TrainproofCallback(TrainerCallback):
         self.min_points = min_points
         self.last_checked_step = 0
         self.last_verdict = None
+        self.last_log_time = time.monotonic()
+        self.last_log_step = 0
+        self.telemetry = {}
 
     def on_log(self, args, state, control, **kwargs):
+        now = time.monotonic()
         step = getattr(state, "global_step", 0)
+        
+        steps_covered = step - self.last_log_step
+        if steps_covered > 0:
+            elapsed = now - self.last_log_time
+            sec_per_step = elapsed / steps_covered
+            
+            tel = {"step_time": sec_per_step}
+            if _HAS_PYNVML:
+                try:
+                    handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+                    util = pynvml.nvmlDeviceGetUtilizationRates(handle)
+                    tel["gpu_util"] = float(util.gpu)
+                except Exception:
+                    pass
+            self.telemetry[step] = tel
+            
+        self.last_log_time = now
+        self.last_log_step = step
+
         if step < self.last_checked_step + self.check_every:
             return
 
         records = _convert_state_to_records(state)
+        for r in records:
+            s = r.get("step")
+            if s in self.telemetry:
+                r.update(self.telemetry[s])
+
         if len(records) < self.min_points:
             return
 

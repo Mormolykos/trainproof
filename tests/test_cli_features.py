@@ -16,6 +16,12 @@ def run_cli():
                 return e.code
     return _run
 
+def test_version_flag(run_cli, capsys):
+    code = run_cli("--version")
+    assert code == 0
+    out, err = capsys.readouterr()
+    assert "0.7.0" in out
+
 def test_doctor_file_mode(tmp_path, run_cli, capsys):
     log_file = tmp_path / "trainer_state.json"
     log_file.write_text(json.dumps({"log_history": [{"step":1, "loss":2.0}, {"step":2, "loss":1.0}, {"step":3, "loss":0.5}]}))

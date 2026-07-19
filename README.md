@@ -48,7 +48,7 @@ VERDICT: PASS
        Evidence: 16 steps analyzed.
 
 ------------------------------------------------------------
-1 checks passed, 0 warnings, 0 failures
+Findings: 1 PASS, 0 WARN, 0 FAIL
 ============================================================
 
 What this cannot tell you
@@ -201,10 +201,12 @@ On a two-day pre-training run, that fraction is days of GPU time. Or watch a
 growing log file from outside the process (CI-friendly, exits non-zero on FAIL):
 
 ```bash
-trainproof watch logs/run.jsonl --interval 10 --until-fail
+trainproof watch logs/run.jsonl --interval 10 --until-fail --stall-timeout 300
 # [21:37:44] warming up (5 records)
 # [21:37:44] n_records=15 verdict=PASS findings=1
 ```
+
+**Why is my training suddenly slow or stuck?** As of v0.7.0, the guardian telemetry captures `step_time` and (if `pynvml` is installed) `gpu_util`. Deterministic timing rules will warn you if throughput drops off a cliff or if the dataloader stalls out. Note that GPU utilization is displayed strictly as context to help you debug—trainproof will never judge your run or issue verdicts based on low utilization.
 
 **The default is safe.** `policy="warn"` (the default) only observes and reports
 — it never interrupts your run, so you can leave it on even for experiments you

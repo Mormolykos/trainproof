@@ -10,7 +10,8 @@ from .report import print_verdict_console, write_html_report, print_doctor_autop
 from .adapters import parse_log_with_format
 
 def main():
-    parser = argparse.ArgumentParser(description="Trainproof: A deterministic linter for ML training runs.")
+    parser = argparse.ArgumentParser(prog="trainproof", description="Trainproof: A deterministic linter for ML training runs.")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__import__('trainproof').__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Data Command
@@ -45,6 +46,7 @@ def main():
     watch_parser.add_argument("--interval", type=int, default=10, help="Polling interval in seconds")
     watch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
     watch_parser.add_argument("--until-fail", action="store_true", help="Exit with code 1 as soon as verdict becomes FAIL")
+    watch_parser.add_argument("--stall-timeout", type=int, default=300, help="Seconds of no log growth before warning of a stall")
 
     # Preflight Command
     preflight_parser = subparsers.add_parser("preflight", help="Pre-flight linter for LLM fine-tuning datasets.")
@@ -67,13 +69,7 @@ def main():
         except Exception as e:
             print(f"Error checking epoch: {e}")
             sys.exit(1)
-    def _detect_format(path: Path) -> str:
-        text = path.read_text(encoding="utf-8", errors="ignore").strip()
-        if path.name == "trainer_state.json": return "hf"
-        if path.suffix == ".json" and '"log_history"' in text: return "hf"
-        if "-- GLOBAL_STEP:" in text: return "coqui"
-        if path.suffix == ".csv" or (text and text[0] != '{'): return "csv"
-        return "jsonl"
+    from .adapters import parse_log_with_format_info
 
     if getattr(args, "command", None) in ("doctor", "diagnose"):
         path = Path(args.path)
@@ -85,7 +81,7 @@ def main():
                 if not p.is_file(): continue
                 if p.name == "trainer_state.json" or p.suffix in (".jsonl", ".csv", ".log", ".txt"):
                     try:
-                        records = parse_log_with_format(p, fmt="auto")
+                        records, _ = parse_log_with_format_info(p, fmt="auto")
                         if len(records) >= 3:
                             candidates.append(p)
                     except Exception:
@@ -110,12 +106,12 @@ def main():
         for p in candidates:
             fmt = args.format if path.is_file() else "auto"
             try:
-                records = parse_log_with_format(p, fmt)
+                records, fmt_str = parse_log_with_format_info(p, fmt)
             except Exception:
                 records = []
+                fmt_str = "unknown"
             if not records: continue
             
-            fmt_str = args.format if args.format != "auto" else _detect_format(p)
             step_range = f"{records[0].get('step', 0)}..{records[-1].get('step', len(records)-1)}"
             
             report = check_records(records)
@@ -207,7 +203,7 @@ def main():
             print(f"Error checking compare: {e}")
             sys.exit(1)
     elif args.command == "watch":
-        watch_loop(args.logfile, interval=args.interval, fmt=args.format, until_fail=args.until_fail)
+        watch_loop(args.logfile, interval=args.interval, fmt=args.format, until_fail=args.until_fail, stall_timeout=args.stall_timeout)
         sys.exit(0)
     elif args.command == "preflight":
         from .preflight import preflight

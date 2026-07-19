@@ -1,6 +1,26 @@
 import pytest
 from pathlib import Path
-from trainproof.epoch import check_epoch
+from trainproof.epoch import check_epoch, check_records
+
+def test_epoch_step_time_cliff():
+    records = []
+    for i in range(5):
+        records.append({"step": i, "loss": 1.0, "step_time": 1.0})
+    for i in range(5, 10):
+        records.append({"step": i, "loss": 0.5, "step_time": 4.0})
+        
+    report = check_records(records)
+    assert report["verdict"] == "WARN"
+    assert any("cliff detected" in str(f) for f in report["findings"])
+
+def test_epoch_loader_stall():
+    records = []
+    for i in range(10):
+        records.append({"step": i, "loss": 1.0 - i*0.01, "step_time": 1.0, "loader_time": 0.6})
+        
+    report = check_records(records)
+    assert report["verdict"] == "WARN"
+    assert any("Dataloader stall detected" in str(f) for f in report["findings"])
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 

@@ -88,3 +88,9 @@ MIN_IMPROVEMENT_FRACTION = 0.25
 
 # WARN if run's grad-norm median > 5x baseline's (skip if either lacks grad norms)
 MAX_GRADNORM_MEDIAN_RATIO = 5.0
+
+# -----------------
+# TIMING RULES
+# -----------------
+STEP_TIME_CLIFF_RATIO = 3.0
+LOADER_FRACTION_MAX = 0.5
