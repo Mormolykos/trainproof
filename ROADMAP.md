@@ -1,99 +1,162 @@
 # trainproof — Roadmap
 
-Updated 2026-07-17, after the first fault-injection study (five controlled QLoRA
-runs: one healthy, four sabotaged). Priorities below are argued from that
-evidence, not from general ML advice.
+The official product roadmap. **Every future feature decision is evaluated
+against this document.** If a proposed feature is not on the roadmap and is not
+justified by the decision rule below, it does not ship.
 
-## Current state (v0.2-dev)
+Updated 2026-07-20, after shipping v0.8 and producing the overfit evidence run.
 
-- Deterministic single-run linting: NaN/Inf, divergence, flat/dead loss,
-  no-improvement (dead run), gradient spikes, zero learning rate, throughput.
-- Log adapters: generic JSONL/CSV, HuggingFace `trainer_state.json`,
-  Coqui Trainer text logs. Auto-detected, `--format` override.
-- Speech domain pack: dataset + tokenizer preflight (built on ttsproof).
-- Validated by fault injection: healthy run PASS; hot-LR, zero-LR, and
-  fp16-overflow runs FAIL with evidence-cited findings.
+---
 
-## Known limitation (documented, not hidden)
+## Decision rule (apply to every proposed feature)
 
-A garbage-labels run (shuffled targets) reduced its loss 62% by learning the
-marginal token distribution — from its own loss curve it is indistinguishable
-from real learning (networks fit random labels). **No single-run, loss-curve-only
-rule can catch this class.** Its detectable signature is relative: a loss floor
-several times higher than a known-good run of the same task.
+A feature ships only if all of these hold:
 
-## v0.3 — Reference-based comparison (implemented)  ← next
+1. **It is deterministic.** A rule fires or it does not; no model judges the run,
+   no probability, no score.
+2. **It is backed by a real, reproducible failure case** committed to the
+   gallery. No evidence, no rule.
+3. **It is dogfoodable on the author's own hardware** (single GPU / small
+   fine-tune). Untested rules for hardware we do not have are forbidden.
+4. **It cites its evidence.** Every finding shows the exact numbers that
+   triggered it and carries a stable `TP-*` id.
+5. **It answers "would someone lose GPU hours (or trust) without it?"** If not,
+   it is scope creep.
 
-`trainproof compare <run> <baseline>`: judge a run against a known-good
-baseline of the same task. Deterministic ratio rules (loss floor ratio,
-improvement-rate ratio, grad-norm distribution ratio), same PASS/WARN/FAIL
-verdict form, evidence-cited. Directly closes the documented limitation using
-data every team already has: their last good run.
+---
 
-## v0.4 — Live Guardian (implemented)
+## Current state — v0.8 (shipped)
 
-- `trainproof watch <logfile>`: tail a growing log, re-judge on an interval,
-  alert on FAIL while the run is still burning GPU.
-- HuggingFace `TrainerCallback` integration: one line in a training script;
-  policies `warn` / `stop_on_fail` ("this run is dead — aborting at step 60").
-- Ships after v0.3 so the guardian judges with reference-aware eyes, not just
-  absolute rules.
+The lifecycle is complete and the trust layer is in place:
 
-## v0.5 — Pre-flight LLM dataset + tokenizer linter (implemented)
+- **`doctor`** (flagship, v0.6) — zero-config autopsy of a file or a whole
+  directory; auto-discovers logs, triage-sorted summary, per-log findings.
+- **preflight** — dataset + tokenizer checks before a GPU-second is billed.
+- **Live guardian** — HuggingFace `TrainerCallback` with step-time telemetry
+  (v0.7) and opt-in auto-abort; `watch` with `--stall-timeout`.
+- **coroner** (`epoch`) — divergence / dead-run / NaN / spike / LR verdicts
+  from a finished log.
+- **compare** — N-way ratio rules against a known-good baseline.
+- **Trust (v0.8)** — canonical exact-match column mapping (no substring
+  guessing; `eval_loss` can never be judged as loss), stable rule IDs +
+  `RULES.md`, honest PASS (lists ran vs skipped checks), `--json` output for
+  CI and AI coding agents.
+- Log adapters: HuggingFace `trainer_state.json`, Coqui, generic JSONL/CSV.
+- Validation: 5-config × 3-seed fault-injection gallery (`examples/gallery/`,
+  `EVIDENCE_MATRIX.md`), 52 tests.
 
-`trainproof preflight <dataset.jsonl> [--tokenizer NAME] [--max-len N]`: the
-"before training" tier — catch broken data BEFORE a single GPU-second is billed
-(the guardian saves most of a doomed run; preflight saves 100% because it never
-starts). The deterministic answer to the v0.2 `bad_labels` finding: loss curves
-can't see corrupted data, so inspect the data itself. Engine is IO-free and
-imports transformers zero times; the CLI loads a tokenizer lazily. Every finding
-carries a stable machine-readable id (for future `--ignore` / `--fail-on` / CI
-annotations).
+### Documented limitation (not hidden)
 
-Checks shipped (all deterministic, universally-true facts):
-- Dataset: malformed JSONL (FAIL, with line number), empty/whitespace text
-  (FAIL), exact-duplicate text (WARN).
-- Tokenizer: missing eos_token (FAIL), missing pad_token (WARN), pad==eos (WARN),
-  bos presence (INFO only — never warns; many model families have no bos).
-- Context: samples exceeding `--max-len` will be silently truncated (WARN).
+A shuffled-labels run reduced its loss 62% by learning the marginal token
+distribution — from its own loss curve, indistinguishable from real learning.
+No single-run, loss-only rule can catch this class; its signature is relative,
+which is why `compare` exists.
 
-Deliberately CUT from v0.5 (future work, NOT built): chat-template validation
-and attention-mask correctness — every model family (ChatML/Alpaca/Llama3/Qwen/
-Gemma/...) has different conventions; that is weeks of work and would violate the
-"universally-true, no guessing" rule if rushed.
+---
 
-Market note: a text-level competitor (Parallelogram) already has community
-traction — proof of demand.
+## v0.9 — the eval-aware release (detection)
 
-## Later
+One theme: teach trainproof to read the eval curve.
 
-- TensorBoard event-file adapter (unlocks Lightning/fairseq-style runs).
-- Checkpoint-resume integrity verifier: on resume, assert current_lr and
-  scheduler state align with global_step (a famous silent HF/DeepSpeed bug).
-  Testable on a single GPU — in scope.
-- Evaluation plugins: trainproof will never run benchmarks itself, but it may
-  CONSUME evaluation results produced by dedicated tools, to correlate "run
-  looked healthy" with "model actually improved". Integration surface only.
-- Training-pathology corpus: grow the labeled gallery (real runs + known fault
-  + verdict) into a standard regression suite — every new rule must be tested
-  against every archived pathology. The five v0.2 gallery runs are its seed
-  (shipped in `examples/gallery/`).
-- Multi-seed fault-injection study (done for v0.3; 3 seeds x 5 configs, see
-  EVIDENCE_MATRIX.md) — extend toward a citable technical report.
+- **Fix (first): the HF training-summary leak.** HuggingFace `trainer_state.json`
+  ends with a summary entry whose `train_loss` is the run *average*, not a
+  per-step loss; it was leaking into the per-step loss series and could fire a
+  false `TP-DIVERGE` on any steeply-converging run. The adapter now drops that
+  entry. Regression-locked against the gallery.
+- **`TP-OVERFIT` — deterministic overfitting detection.** eval_loss rising past
+  a ratio of its own minimum while train_loss keeps falling. Grounded in a real
+  overfit run: eval_loss min 1.25 @step30 → 3.76 @step300 (3.0x) while train
+  fell 1.38 → 0.03. Fires WARN (early stopping is the user's choice; it flags
+  that the best checkpoint was earlier). The failure practitioners most fear,
+  and perfectly deterministic.
+- **Evidence** — a real overfit run added to the gallery
+  (`examples/gallery/overfit/`), with eval logging. No rule without a run it
+  catches.
 
-## Non-goals (deliberate)
+## v0.10 — configuration + CI integration
 
-- Model-quality evaluation (benchmarks, win-rates): that is the model's
-  quality, not the run's health — mature tools exist. trainproof judges runs.
-  (In this family, output quality is ttsproof's job.)
-- Invented confidence percentages, probabilistic verdicts, or "fingerprint"
-  match-scores. Rules are deterministic; every finding cites its evidence. Locked.
-- **Hyperscale / multi-node features that cannot be tested on the author's own
-  hardware** (DeepSpeed ZeRO shape assertors, NCCL straggler detection,
-  stable-rank collapse predictors, hot-ID gradient monitors, 1k-16k-GPU
-  cluster diagnostics). trainproof's credibility is that every rule is
-  dogfooded on real runs; shipping untested rules for hardware we don't have
-  would betray that. Scope stays single-GPU / small-cluster fine-tuning — where
-  the tool's audience actually works.
-- Lightning console TTY captures as an input format: they are terminal dumps,
-  not logs.
+The adoption cluster, built on the v0.8 `--json` report (no new detection):
+
+- **`[tool.trainproof]` config in pyproject.toml** — select/ignore rules by id,
+  per-project threshold overrides. CI teams will not adopt a linter they cannot
+  tune per-repo.
+- **SARIF output** (priority) — GitHub renders findings inline on pull
+  requests. Real distribution.
+- **JUnit XML output** — nice-to-have; lands after SARIF.
+
+## v1.0 — the stability contract (promises, not features)
+
+1.0 is the moment the interface becomes a promise:
+
+- Freeze: rule IDs (already permanent), JSON `schema_version` policy,
+  documented exit codes, SemVer + CHANGELOG, complete `RULES.md`.
+- **Publish the fault-injection gallery as the permanent regression suite** —
+  every future rule tested against every archived pathology.
+- **One earned feature: the TensorBoard events adapter** (optional `[tb]`
+  extra), landing together with an **adapter registry** so future adapters are
+  plug-ins, not core surgery. This unlocks the Lightning/fairseq audience.
+- v1.0 is the Show HN moment — a year of evidence behind it.
+
+## Post-1.0 — exactly three lanes
+
+1. **Adapter ecosystem** — Axolotl, Unsloth, community adapters via the
+   registry, with credit. Growth without core bloat.
+2. **The agent lane** — `watch` as an MCP server so a coding agent stays
+   connected during a long run and interrupts at the moment of `TP-STEP-CLIFF`.
+   Dogfoodable; nobody else offers it.
+3. **The research lane** — a fault-injection methodology paper (Zenodo): the
+   multi-seed matrix + the overfit extension, formalizing evidence-driven
+   linter development.
+
+Also acceptable (single-GPU-testable, deferred, not committed):
+
+- **Checkpoint-resume integrity verifier** — on resume, assert `current_lr` and
+  scheduler state align with `global_step` (a real silent HF/DeepSpeed bug).
+  Testable on one GPU, in scope.
+- **Chat-template / attention-mask validation** for preflight — *deliberately
+  cut from v0.5, not abandoned.* Deferred because every model family
+  (ChatML / Alpaca / Llama3 / Qwen / Gemma / …) has different conventions;
+  doing it right is weeks of work, and rushing it would violate the
+  "universally-true, no guessing" rule. Revisit only when it can be made
+  deterministic per-family with evidence.
+- **Consuming external evaluation results** to correlate "run looked healthy"
+  with "model actually improved" — integration surface only; trainproof never
+  runs benchmarks itself.
+
+Market signal (kept from prior analysis): a text-level dataset linter
+(Parallelogram) already has community traction — proof of demand for the
+preflight lane; trainproof differentiates by going deeper (tensor/tokenizer
+level, full lifecycle) rather than text-only.
+
+---
+
+## Never (locked — each already refused at least once)
+
+- **No ML judging ML.** No model scores a run.
+- **No confidence scores / health percentages** (e.g. "92/100"). Fake certainty
+  in a deterministic costume. Findings are counts + cited evidence.
+- **No AI-generated diagnoses or hallucinated fixes / prescriptive advice.** The
+  moment it advises, it can lie.
+- **No dashboard-first product / web UI / experiment tracking.** That is
+  wandb/MLflow's domain; trainproof answers "should I trust this run," not
+  "show me metrics."
+- **No SaaS / cloud / telemetry collection.** Local tool; the user's data stays
+  theirs.
+- **No hyperscale / multi-node features undogfoodable on one GPU** (DeepSpeed
+  ZeRO shape assertors, NCCL straggler detection, stable-rank collapse
+  predictors, hot-ID gradient monitors, 1k–16k-GPU cluster diagnostics).
+  Relabelling this as "research" does not exempt it. Scope stays
+  single-GPU / small fine-tune — where the audience works.
+- **No auto-mutating the user's files, scripts, datasets, or configs.** A linter
+  reports; it never rewrites your training code or your data.
+- **No W&B / proprietary-API adapters** that require a network client or binary
+  format. Reads plain logs only; users can `wandb export` to CSV and feed that.
+- **No new rule without a real reproducible failure case in the gallery.**
+- **No Lightning console TTY captures as input** — terminal dumps, not logs.
+
+---
+
+## The one sentence this roadmap protects
+
+*If trainproof says FAIL, stop the run and investigate.* Everything on the Never
+list stays off so that sentence stays true.

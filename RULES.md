@@ -22,6 +22,7 @@ These rules run on a single training log (via `trainproof epoch` or `trainproof 
 | `TP-LOADER-BOUND` | WARN | Dataloader stall detected: loader time accounts for >20% of total step time. |
 | `TP-GPU-UTIL` | INFO | Displays average GPU utilization (if available). |
 | `TP-STALL` | WARN | (Watch only) The log file has not grown within the stall timeout period. |
+| `TP-OVERFIT` | WARN | Overfitting detected: eval loss degraded significantly (>1.2x) while train loss continued falling. (Note: Does not mean run is mechanically broken, just that final checkpoint is not the best). |
 | `TP-PASS` | PASS | The single-run checks passed. |
 
 ## Compare Rules

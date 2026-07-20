@@ -68,6 +68,10 @@ MIN_LOSS_IMPROVEMENT = 0.05
 LOSS_IMPROVEMENT_WINDOW = 5
 MIN_POINTS_FOR_IMPROVEMENT_CHECK = 10
 
+# Overfitting detection thresholds
+OVERFIT_RATIO = 1.2
+OVERFIT_MIN_EVALS = 4
+
 # -----------------
 # COMPARE SUBCOMMAND
 # -----------------

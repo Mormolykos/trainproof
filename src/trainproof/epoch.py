@@ -100,6 +100,43 @@ def check_records(records: list[dict]) -> dict[str, Any]:
             findings.append({"id": "TP-THROUGHPUT", "level": "INFO", "message": "Throughput measured from log timestamps.",
                              "evidence": f"{rate:.2f} steps/sec over {span:.0f}s observed."})
 
+    # Overfit Rule
+    eval_losses = []
+    eval_loss_steps = []
+    for i, r in enumerate(records):
+        el = r.get("eval_loss")
+        if el is not None and not math.isnan(el) and not math.isinf(el):
+            eval_losses.append(el)
+            eval_loss_steps.append(r.get("step", i))
+            
+    if len(eval_losses) >= rules.OVERFIT_MIN_EVALS:
+        eval_min = min(eval_losses)
+        i_min = eval_losses.index(eval_min)
+        if len(eval_losses) - i_min - 1 >= 3:
+            last_3 = sorted(eval_losses[-3:])
+            med_last_3 = last_3[len(last_3)//2]
+            if med_last_3 > eval_min * rules.OVERFIT_RATIO:
+                min_step = eval_loss_steps[i_min]
+                
+                tl_at_min = None
+                for i, step in enumerate(loss_steps):
+                    if step >= min_step:
+                        tl_at_min = losses[i]
+                        break
+                        
+                if tl_at_min is None and losses:
+                    tl_at_min = losses[-1]
+
+                if tl_at_min is not None and valid_losses and valid_losses[-1] < tl_at_min:
+                    ratio = med_last_3 / eval_min if eval_min > 0 else float('inf')
+                    findings.append({
+                        "id": "TP-OVERFIT",
+                        "level": "WARN",
+                        "message": "Overfitting detected: eval loss has significantly degraded while train loss continued falling.",
+                        "evidence": f"eval_loss min {eval_min:.2f} @step{int(min_step)} rose to {med_last_3:.2f} ({ratio:.1f}x > {rules.OVERFIT_RATIO}) over the last 3 evals while train_loss fell to {valid_losses[-1]:.2f} - best checkpoint was near step {int(min_step)}."
+                    })
+                    if verdict == "PASS": verdict = "WARN"
+
     # Telemetry Rules
     step_times = []
     for r in records:

@@ -39,6 +39,8 @@ def parse_hf_trainer_state(text: str, mapping_overrides: dict[str, str] = None) 
     used_mapping = {}
     
     for entry in history:
+        if "train_runtime" in entry:
+            continue
         record = {}
         for col_name, v in entry.items():
             if v is None:

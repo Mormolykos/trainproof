@@ -20,7 +20,7 @@ def test_version_flag(run_cli, capsys):
     code = run_cli("--version")
     assert code == 0
     out, err = capsys.readouterr()
-    assert "0.8.0" in out
+    assert "0.9.0" in out
 
 def test_doctor_file_mode(tmp_path, run_cli, capsys):
     log_file = tmp_path / "trainer_state.json"
