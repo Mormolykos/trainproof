@@ -19,17 +19,54 @@ def parse_map(map_list):
                 overrides[canon.strip()] = col.strip()
     return overrides
 
-def output_json(reports, worst_verdict):
-    out = {
-        "schema_version": 1,
+SCHEMA_VERSION = 2
+
+_JSON_MODE = False
+_SARIF_PATH = None
+
+def _envelope(reports, worst_verdict, error=None):
+    return {
+        "schema_version": SCHEMA_VERSION,
         "trainproof_version": __import__('trainproof').__version__,
         "reports": reports,
-        "worst_verdict": worst_verdict
+        "worst_verdict": worst_verdict,
+        "error": error,
     }
-    print(json.dumps(out, indent=2))
+
+def tag_source(findings, source):
+    # every finding carries where it came from, so one flat `findings` array
+    # can hold single-run and baseline-comparison results without ambiguity
+    return [dict(f, source=source) for f in findings]
+
+def emit_sarif(reports):
+    # independent of --json: CI wants the file without JSON on stdout
+    if not _SARIF_PATH:
+        return
+    from .sarif import to_sarif
+    doc = to_sarif(reports, __import__('trainproof').__version__)
+    Path(_SARIF_PATH).write_text(json.dumps(doc, indent=2), encoding="utf-8")
+
+def output_json(reports, worst_verdict):
+    emit_sarif(reports)
+    print(json.dumps(_envelope(reports, worst_verdict), indent=2))
     sys.exit(1 if worst_verdict == "FAIL" else 0)
 
+def fail_to_run(message):
+    # trainproof could not judge: exit 2 and never synthesise a FAIL verdict,
+    # or CI cannot tell a doomed run from an unreadable file.
+    if _JSON_MODE:
+        print(json.dumps(_envelope([], None, error=message), indent=2))
+    else:
+        print(f"trainproof: {message}", file=sys.stderr)
+    sys.exit(2)
+
 def main():
+    try:
+        _run()
+    except Exception as e:
+        fail_to_run(f"internal error: {e}")
+
+def _run():
     parser = argparse.ArgumentParser(prog="trainproof", description="Trainproof: A deterministic linter for ML training runs.")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__import__('trainproof').__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -37,11 +74,13 @@ def main():
     # Data Command
     data_parser = subparsers.add_parser("data", help="Dataset preflight for speech/TTS corpora.")
     data_parser.add_argument("input", type=str, help="Directory or manifest.jsonl")
+    data_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
 
     # Tokenizer Command
     tok_parser = subparsers.add_parser("tokenizer", help="Tokenizer preflight.")
     tok_parser.add_argument("model", type=str, help="Path to tokenizer model (e.g., SentencePiece .model)")
     tok_parser.add_argument("transcripts", type=str, help="Path to transcripts text file or JSONL")
+    tok_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
 
     # Epoch Command
     epoch_parser = subparsers.add_parser("epoch", help="First-epoch verdict from training logs.")
@@ -49,6 +88,7 @@ def main():
     epoch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
     epoch_parser.add_argument("--map", action="append", help="Override log column mapping (e.g. loss=my_loss)")
     epoch_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
+    epoch_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
 
     # Doctor Command
     doctor_parser = subparsers.add_parser("doctor", aliases=["diagnose"], help="Flagship zero-config autopsy of training logs.")
@@ -57,6 +97,7 @@ def main():
     doctor_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override (file mode only)")
     doctor_parser.add_argument("--map", action="append", help="Override log column mapping (e.g. loss=my_loss)")
     doctor_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
+    doctor_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
 
     # Compare Command
     compare_parser = subparsers.add_parser("compare", help="Compare a run log against a baseline log.")
@@ -65,6 +106,7 @@ def main():
     compare_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
     compare_parser.add_argument("--map", action="append", help="Override log column mapping")
     compare_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
+    compare_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
 
     # Watch Command
     watch_parser = subparsers.add_parser("watch", help="Live guardian: poll a training log.")
@@ -81,12 +123,17 @@ def main():
     preflight_parser.add_argument("--tokenizer", type=str, help="Tokenizer name or path")
     preflight_parser.add_argument("--max-len", type=int, help="Max context length")
     preflight_parser.add_argument("--text-field", type=str, help="Text field to extract")
+    preflight_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
+    preflight_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
 
     args = parser.parse_args()
     
     mapping_overrides = parse_map(getattr(args, "map", None))
     is_json = getattr(args, "json", False)
-    
+    global _JSON_MODE, _SARIF_PATH
+    _JSON_MODE = is_json
+    _SARIF_PATH = getattr(args, "sarif", None)
+
     report_dict = {}
 
     if args.command == "data":
@@ -97,11 +144,15 @@ def main():
         try:
             report_dict = check_epoch(args.logfile, fmt=args.format, mapping_overrides=mapping_overrides)
         except Exception as e:
-            if is_json:
-                output_json([{"error": str(e)}], "FAIL")
-            print(f"Error checking epoch: {e}")
-            sys.exit(1)
-            
+            fail_to_run(f"could not read log {args.logfile}: {e}")
+
+        # no records parsed means nothing was judged -- that is a tool outcome,
+        # not a FAIL verdict on the training run
+        if any(f.get("id") == "TP-NO-RECORDS" for f in report_dict.get("findings", [])):
+            fail_to_run(f"no readable log records in {args.logfile}")
+
+
+        report_dict["findings"] = tag_source(report_dict.get("findings", []), "single_run")
         if is_json:
             output_json([report_dict], report_dict.get("verdict", "UNKNOWN"))
 
@@ -121,14 +172,10 @@ def main():
                     except Exception:
                         pass
         else:
-            if is_json: output_json([{"error": f"Path not found: {path}"}], "FAIL")
-            print(f"Path not found: {path}")
-            sys.exit(2)
-            
+            fail_to_run(f"path not found: {path}")
+
         if not candidates:
-            if is_json: output_json([{"error": "No valid logs found."}], "FAIL")
-            print("No valid logs found.")
-            sys.exit(2)
+            fail_to_run(f"no readable training logs found in {path}")
             
         if path.is_dir():
             candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
@@ -157,11 +204,18 @@ def main():
             report["num_records"] = len(records)
             report["step_range"] = step_range
             report["used_mapping"] = used_mapping
-            
+            report["findings"] = tag_source(report["findings"], "single_run")
+
             if args.baseline:
                 try:
                     cmp = check_compare(p, args.baseline, fmt=fmt, mapping_overrides=mapping_overrides)
-                    report["compare_findings"] = cmp["findings"]
+                    report["findings"] += tag_source(cmp["findings"], "compare")
+                    # a failed baseline comparison is a failed run: without this
+                    # doctor prints [FAIL] findings and still exits 0
+                    if cmp["verdict"] == "FAIL":
+                        report["verdict"] = "FAIL"
+                    elif cmp["verdict"] == "WARN" and report["verdict"] == "PASS":
+                        report["verdict"] = "WARN"
                 except Exception:
                     pass
             results.append(report)
@@ -185,14 +239,17 @@ def main():
             print()
             
         for r in results:
-            print_doctor_autopsy(r["file"], r["fmt"], r["num_records"], r["step_range"], r["verdict"], r["findings"])
+            single = [f for f in r["findings"] if f.get("source") != "compare"]
+            vs_baseline = [f for f in r["findings"] if f.get("source") == "compare"]
+
+            print_doctor_autopsy(r["file"], r["fmt"], r["num_records"], r["step_range"], r["verdict"], single)
             if r.get("used_mapping") and r["fmt"] in ("csv", "jsonl"):
                 print("COLUMNS: " + ", ".join(f"{canon}<-'{col}'" for canon, col in r["used_mapping"].items()))
                 print()
-                
-            if "compare_findings" in r:
+
+            if vs_baseline:
                 print("--- VS BASELINE ---")
-                for f in r["compare_findings"]:
+                for f in vs_baseline:
                     level = f.get("level", "INFO")
                     rid = f.get("id", "")
                     prefix = f"[{level}] {rid}: " if rid else f"[{level}] "
@@ -201,6 +258,7 @@ def main():
                 print()
                 
         print_doctor_footer()
+        emit_sarif(results)
         sys.exit(1 if worst_verdict == "FAIL" else 0)
 
     elif args.command == "compare":
@@ -223,6 +281,7 @@ def main():
             all_reports = []
             for run_path in args.runs:
                 report_dict = check_compare(run_path, args.baseline, fmt=args.format, mapping_overrides=mapping_overrides)
+                report_dict["findings"] = tag_source(report_dict["findings"], "compare")
                 all_reports.append(report_dict)
                 
                 run_records = parse_log_with_format(run_path, args.format, mapping_overrides)
@@ -245,7 +304,8 @@ def main():
                 output_json(all_reports, worst_verdict)
                 
             print_compare_table(table_results)
-            
+            emit_sarif(all_reports)
+
             if len(args.runs) == 1:
                 print_verdict_console(all_reports[0]["verdict"], all_reports[0]["findings"])
                 sys.exit(1 if all_reports[0]["verdict"] == "FAIL" else 0)
@@ -253,9 +313,7 @@ def main():
             sys.exit(1 if any(r["verdict"] == "FAIL" for r in all_reports) else 0)
                 
         except Exception as e:
-            if is_json: output_json([{"error": str(e)}], "FAIL")
-            print(f"Error checking compare: {e}")
-            sys.exit(1)
+            fail_to_run(f"could not compare against {args.baseline}: {e}")
     elif args.command == "watch":
         watch_loop(args.logfile, interval=args.interval, fmt=args.format, until_fail=args.until_fail, stall_timeout=args.stall_timeout)
         sys.exit(0)
@@ -267,18 +325,21 @@ def main():
                 from transformers import AutoTokenizer
                 tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
             except ImportError:
-                report_dict = {
-                    "verdict": "FAIL",
-                    "findings": [{"id": "TP-PRE-TRANSFORMERS-MISSING", "level": "FAIL", "message": "pip install transformers is required to load tokenizer", "evidence": ""}]
-                }
-                print_verdict_console(report_dict["verdict"], report_dict["findings"])
-                sys.exit(1)
+                # a missing dependency is trainproof's problem, not a verdict
+                # on the user's dataset
+                fail_to_run("pip install transformers is required to load a tokenizer")
         
         result = preflight(args.dataset, tokenizer=tokenizer, max_len=args.max_len, text_field=args.text_field)
         report_dict = {"verdict": result.verdict, "findings": result.findings}
 
+    report_dict["findings"] = tag_source(report_dict.get("findings", []), "single_run")
+    if is_json:
+        # exits here: the HTML-report notice below would corrupt the JSON stream
+        output_json([report_dict], report_dict.get("verdict", "UNKNOWN"))
+
     print_verdict_console(report_dict.get("verdict", "FAIL"), report_dict.get("findings", []))
-    
+    emit_sarif([report_dict])
+
     html_out = Path("trainproof_report.html")
     write_html_report(report_dict, html_out)
     print(f"\nSaved detailed HTML report to {html_out.absolute()}")

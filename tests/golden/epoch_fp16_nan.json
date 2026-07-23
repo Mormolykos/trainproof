@@ -1,0 +1,8 @@
+{
+  "verdict": "FAIL",
+  "finding_ids": [
+    "TP-DEAD-RUN",
+    "TP-DIVERGE",
+    "TP-GRAD-SPIKE"
+  ]
+}

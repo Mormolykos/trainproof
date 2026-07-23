@@ -140,7 +140,7 @@ trainproof tokenizer my_tokenizer.model transcripts.txt
 
 # 3. Training-run verdict: NaN/divergence/dead-run detection, gradient spikes,
 #    LR sanity, throughput — from log files, any framework
-trainproof epoch logs/run.jsonl            # exit code 1 on FAIL: CI-ready
+trainproof epoch logs/run.jsonl            # exit 1 on FAIL: CI-ready
 
 # 4. Compare runs against a baseline (v0.6: BASELINE FIRST, then one or more runs
 #    — argument order changed from <run> <baseline> in v0.5 and earlier).
@@ -167,6 +167,32 @@ TRAINPROOF VERDICT
 
 Each command prints the verdict, writes a self-contained HTML report, and sets
 the process exit code — so it works as a CI gate out of the box.
+
+## In CI: three exit codes and SARIF
+
+| Code | Meaning |
+|---|---|
+| `0` | No FAIL findings — judged and passed (warnings possible) |
+| `1` | **A FAIL verdict about your run.** Investigate. |
+| `2` | **trainproof could not judge** — unreadable log, missing file, missing optional dependency. Says nothing about your run. |
+
+That separation is the point. A corrupt log gives you `2`, never `1`:
+trainproof will not tell you a run failed when it merely could not read it.
+
+Findings can also land directly in GitHub pull-request annotations:
+
+```bash
+trainproof doctor . --sarif trainproof.sarif
+# then: github/codeql-action/upload-sarif@v3 with sarif_file: trainproof.sarif
+```
+
+Pass a **relative** path (`.`), not an absolute one — the SARIF URIs mirror the
+path you invoked with, and GitHub silently drops annotations it cannot map back
+to a file in the repository.
+
+The full stability contract — exit codes, JSON schema policy, rule-ID
+guarantees, and what may change between releases — is in
+**[CONTRACTS.md](CONTRACTS.md)**.
 
 ## Live guardian (v0.4)
 
@@ -264,7 +290,8 @@ training project on a user's behalf:
 - Every finding carries a stable `id` (e.g. `TP-DIVERGE`, `TP-DEAD-RUN`) —
   look ids up in [RULES.md](RULES.md) for what fired and what it does NOT
   mean. Parse ids, never message text.
-- Exit code non-zero means do not let your user celebrate the run.
+- Exit `1` is a FAIL verdict about the run. Exit `2` means trainproof could
+  not judge it — report that as a tool problem, never as a failed run.
 - A `TP-PASS` verdict lists which checks ran and which were skipped for lack
   of data — do not report stability of anything in the skipped list.
 - These verdicts are deterministic threshold rules, not model judgments.

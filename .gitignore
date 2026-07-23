@@ -7,5 +7,6 @@ dist/
 build/
 .venv/
 recon/
+uv.lock
 
 release.ps1

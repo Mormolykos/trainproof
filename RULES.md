@@ -1,6 +1,8 @@
-# Trainproof Rule IDs (v0.8.0)
+# Trainproof Rule IDs
 
-Every finding emitted by trainproof includes a stable `TP-*` ID. This document lists all known rule IDs, their severity, and the conditions that trigger them.
+Every finding emitted by trainproof includes a stable `TP-*` ID. This document lists all known rule IDs, their severity, and the conditions that trigger them. It is kept in step with the source by a test — a rule the code does not emit, or an ID this file does not document, fails the build.
+
+Conditions where trainproof cannot judge a run at all (unreadable file, missing path, missing optional dependency) are not rules. They exit with code `2` and emit no verdict — see [CONTRACTS.md](CONTRACTS.md).
 
 ## Epoch / Watch (Single-Run) Rules
 
@@ -8,7 +10,7 @@ These rules run on a single training log (via `trainproof epoch` or `trainproof 
 
 | ID | Default Level | Description |
 |---|---|---|
-| `TP-NO-RECORDS` | FAIL | The log file could not be parsed or contained no valid records. |
+| `TP-NO-RECORDS` | FAIL | The log file could not be parsed or contained no valid records. Reaching this through the CLI exits `2` (cannot judge), not `1`. |
 | `TP-NO-LOSS` | FAIL | The log file contains fewer than 10 valid loss points. |
 | `TP-NAN` | FAIL | The loss curve contains NaN or Infinity values. |
 | `TP-FLAT` | FAIL | The loss curve is completely flat (variation < 0.005). The run is dead. |
@@ -76,7 +78,6 @@ These rules validate tokenizers and datasets (via `trainproof tokenizer` or `tra
 | `TP-TOK-HIGH-TPS` | WARN | High tokens per second of audio (possible sequence length blowout). |
 | `TP-TOK-SUSPICIOUS-SPLIT` | WARN | Suspicious splits detected on numbers or dates. |
 | `TP-TOK-PASS` | PASS | The tokenizer vocabulary coverage and splits look healthy. |
-| `TP-PRE-TRANSFORMERS-MISSING`| FAIL| The `transformers` module is required but not installed. |
 | `TP-PRE-EMPTY-TEXT` | FAIL | Empty or whitespace-only text found in the dataset. |
 | `TP-PRE-DUPLICATE-TEXT` | WARN | Exact duplicate text found in the dataset. |
 | `TP-PRE-MISSING-EOS-TOKEN`| FAIL | The tokenizer has no `eos_token`. |

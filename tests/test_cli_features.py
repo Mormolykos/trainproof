@@ -3,6 +3,7 @@ import json
 import pytest
 from unittest.mock import patch
 from pathlib import Path
+import trainproof
 import trainproof.cli as cli
 
 @pytest.fixture
@@ -20,7 +21,7 @@ def test_version_flag(run_cli, capsys):
     code = run_cli("--version")
     assert code == 0
     out, err = capsys.readouterr()
-    assert "0.9.0" in out
+    assert trainproof.__version__ in out
 
 def test_doctor_file_mode(tmp_path, run_cli, capsys):
     log_file = tmp_path / "trainer_state.json"
@@ -68,7 +69,8 @@ def test_doctor_zero_logs(tmp_path, run_cli, capsys):
     code = run_cli("doctor", str(tmp_path))
     assert code == 2
     out, err = capsys.readouterr()
-    assert "No valid logs found." in out
+    # v0.10: "cannot judge" messages go to stderr so stdout stays parseable
+    assert "no readable training logs found" in err
 
 def test_compare_n_way(tmp_path, run_cli, capsys):
     base = tmp_path / "base.csv"
