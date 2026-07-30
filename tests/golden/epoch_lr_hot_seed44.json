@@ -1,0 +1,7 @@
+{
+  "verdict": "FAIL",
+  "finding_ids": [
+    "TP-DIVERGE",
+    "TP-GRAD-SPIKE"
+  ]
+}

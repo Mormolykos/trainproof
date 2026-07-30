@@ -63,8 +63,9 @@ against a known-good baseline: trainproof compare <baseline> <run>
 
 ## See a verdict in 60 seconds
 
-This repo ships the real logs of five QLoRA fine-tuning runs (Qwen2.5-3B,
-RTX 5080 — see the gallery below). Judge one right now:
+This repo ships the real logs of eighteen QLoRA fine-tuning runs (Qwen2.5-3B,
+RTX 5080 — six configurations at three seeds each; see the gallery below). Judge
+one right now:
 
 ```bash
 trainproof epoch examples/gallery/lr_hot/trainer_state.json --format hf
@@ -84,19 +85,33 @@ TRAINPROOF VERDICT
 
 ## Why this exists
 
-The author lost a real 11-hour fine-tune to a failure nothing warned about.
-Pointed retroactively at that run's 1MB Coqui Trainer log (2,501 logged steps),
-trainproof's verdict: **FAIL — diverging**. The loss reached its minimum at 82%
-of the run and ended 1.9x above it. Translation: the final two hours of GPU
-time made the model measurably worse, and the checkpoint worth keeping had
-already existed for hours. No tool in the stack said a word.
+A 9.8-hour XTTS fine-tune ended measurably worse than it had been three hours
+earlier, and nothing in the stack said a word. That run's Coqui Trainer log ships
+in this repo, so the verdict is reproducible instead of an anecdote:
+
+```bash
+trainproof epoch examples/real_world/xtts_diverged/trainer_0_log.txt --format coqui
+```
+
+**FAIL — diverging.** The loss reached its minimum at step 48,350, which is 66% of
+the way through, and the run ended 1.62x above it.
+
+The trainer's own bookkeeping agrees, which is the part worth checking yourself:
+the last `BEST MODEL` line in that log is `best_model_49880.pth`, while the last
+checkpoint written is `checkpoint_70000.pth`. The weights worth keeping had existed
+for roughly 23,000 steps — about three hours of GPU time — before the run stopped.
+Coqui recorded it. Nothing in the stack was asking.
 
 ## The fault-injection gallery
 
 To validate the rules, the same QLoRA fine-tune (Qwen2.5-3B-Instruct, 4-bit,
-LoRA r=16, 300 steps on Alpaca-cleaned) was run five times — once healthy, four
-times with exactly one knob deliberately broken. Real runs, real logs, all
-shipped in [`examples/gallery/`](examples/gallery/):
+LoRA r=16, 300 steps on Alpaca-cleaned) was run in six configurations — once
+healthy, five times with exactly one knob deliberately broken — and every
+configuration was repeated at three seeds (42, 43, 44). Eighteen real runs, real
+logs, all shipped in [`examples/gallery/`](examples/gallery/). Seed 42 is the log
+at each config root; 43 and 44 are nested beside it. The table below is seed 42;
+[EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) carries all eighteen and is generated
+from the logs themselves:
 
 | Run | Sabotage | Verdict | Key evidence |
 |---|---|---|---|
@@ -105,11 +120,16 @@ shipped in [`examples/gallery/`](examples/gallery/):
 | `lr_zero` | LR = 0 | **FAIL** | dead run: first-5 median 1.52 vs last-5 1.49 (<5% improvement); lr=0 on 100% of steps |
 | `fp16_nan` | fp16 + hot LR, no clipping | **FAIL** | diverging: end 7.21 vs min 1.09 (grad scaling absorbed the intended NaN — the run diverged instead; reported as observed) |
 | `bad_labels` | labels shuffled per-sequence | **WARN only** (single-run) — caught by `trainproof compare` (v0.3) | grad spike 23.3 vs median 1.09 |
+| `overfit` | 64 training samples, many epochs — pure memorisation, with a held-out eval set | **WARN** (`TP-OVERFIT`) | train 1.38 → 0.03 while eval bottoms out early and climbs to 3.76 |
 
 ### The honest finding: loss curves cannot see corrupted data
 
 The `bad_labels` run — whose shuffled labels make real learning impossible —
-*reduced its loss by 62%* (18.9 → 5.75). The model was genuinely learning: not
+*reduced its loss by 62%* (15.3 → 5.75, as trainproof measures start and end) —
+while the healthy baseline improved only **14.7%**. On its own curve, the run
+that cannot possibly learn looks like the *better* training run. That holds in
+every seed: 62.5% / 62.8% / 61.9% for `bad_labels` against 14.7% / 23.0% / 25.1%
+for healthy. The model was genuinely learning: not
 the task, but the marginal token statistics of the garbage. From its own loss
 curve, that is indistinguishable from healthy training (neural networks
 famously fit random labels). **No single-run, loss-only rule can catch this
@@ -119,7 +139,7 @@ than a known-good run of the same task (5.59 vs 0.94).
 That finding produced v0.3: `trainproof compare <baseline> <run...>` —
 deterministic ratio rules against the healthy baseline you already have —
 which catches `bad_labels` at a 6x loss-floor ratio, in 3 seeds out of 3.
-The full study was repeated with three random seeds (15 runs):
+The full study was repeated with three random seeds (18 runs, all shipped):
 see [EVIDENCE_MATRIX.md](EVIDENCE_MATRIX.md) for every verdict, including the
 honest miss (compare alone overlooks one lr_zero seed — the single-run
 zero-LR fatality rule owns that case; the two commands cover each other's
@@ -165,8 +185,9 @@ TRAINPROOF VERDICT
 ========================================
 ```
 
-Each command prints the verdict, writes a self-contained HTML report, and sets
-the process exit code — so it works as a CI gate out of the box.
+Each command prints the verdict and sets the process exit code — so it works as a
+CI gate out of the box. Nothing is written to disk unless you ask: `epoch` takes
+`--html [PATH]` for a self-contained HTML report and `--sarif PATH` for SARIF.
 
 ## In CI: three exit codes and SARIF
 
@@ -262,12 +283,18 @@ trainproof preflight data/dataset.jsonl --tokenizer mistralai/Mistral-7B-v0.1 --
 TRAINPROOF VERDICT
 ========================================
 [FAIL] Critical checks failed:
-  [FAIL] Empty or whitespace-only text found.
+  [FAIL] TP-PRE-EMPTY-TEXT: Empty or whitespace-only text found.
          Evidence: 1 records (indices [1]...)
 ========================================
 ```
 
 *Checks: malformed JSONL, empty text, exact duplicate text, tokenizer structural checks (EOS/PAD/BOS), and context length overflows.*
+
+The dataset checks need nothing beyond trainproof itself — drop `--tokenizer` and the
+JSONL, empty-text and duplicate checks all still run. `--tokenizer` loads a real
+tokenizer, so it additionally needs `pip install transformers`; without it you get
+exit 2 ("could not judge") and a one-line reason, never a false verdict about your
+data.
 
 ## Supported log formats
 

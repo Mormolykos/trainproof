@@ -1,0 +1,6 @@
+{
+  "verdict": "WARN",
+  "finding_ids": [
+    "TP-OVERFIT"
+  ]
+}

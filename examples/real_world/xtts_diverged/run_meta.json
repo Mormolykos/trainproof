@@ -1,0 +1,15 @@
+{
+  "config": "xtts_diverged",
+  "kind": "real-world failure, not injected",
+  "trainer": "Coqui TTS",
+  "recipe": "XTTS v2 fine-tune, LJSpeech",
+  "date": "2026-02-11",
+  "log_format": "coqui",
+  "loss_points": 1459,
+  "final_step": 72900,
+  "wall_seconds": 35131,
+  "best_model_recorded_by_trainer": "best_model_49880.pth",
+  "last_checkpoint_written": "checkpoint_70000.pth",
+  "redaction": "One local filesystem prefix was replaced with <TTS> in 14 lines. No numeric value, timestamp or step was altered. trainproof's verdict and evidence strings are byte-identical before and after redaction; the unredacted original is retained privately as the provenance record.",
+  "why_it_ships": "Every other log in this repo is a fault injected on purpose. This one broke on its own, in a different log format, in a real fine-tune -- which is the harder thing to demonstrate."
+}

@@ -36,6 +36,31 @@ def test_version_declared_once():
     assert declared.group(1) == trainproof.__version__
 
 
+@pytest.mark.parametrize(
+    "argv,expected",
+    [
+        (["epoch", str(GALLERY / "healthy" / "trainer_state.json")], 0),
+        (["epoch", str(GALLERY / "lr_hot" / "trainer_state.json")], 1),
+        (["epoch", str(GALLERY / "no_such_run.json")], 2),
+    ],
+)
+def test_module_entry_point_matches_the_exit_code_contract(argv, expected, tmp_path):
+    # `python -m trainproof` is a second door into the same contract. If it ever
+    # scored runs differently from the console script, exit 1 and exit 2 would
+    # mean one thing to CI and another to a human, which is the failure this
+    # whole file exists to prevent.
+    import subprocess
+
+    result = subprocess.run(
+        [sys.executable, "-m", "trainproof", *argv],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,  # not the repo: keep any output out of the source tree
+        check=False,  # a non-zero exit is the thing under test
+    )
+    assert result.returncode == expected, result.stdout + result.stderr
+
+
 def test_rule_ids_and_rules_md_agree():
     # both directions: an undocumented rule is unusable, and a documented rule
     # that no longer fires is a promise the tool has quietly stopped keeping

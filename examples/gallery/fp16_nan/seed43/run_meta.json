@@ -1,0 +1,7 @@
+{
+  "config": "fp16_nan",
+  "seed": 43,
+  "crashed": null,
+  "minutes": 7.0,
+  "steps_logged": 61
+}

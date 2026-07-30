@@ -1,0 +1,220 @@
+{
+  "project": "trainproof",
+  "version": "0.10.0",
+  "release_date": "2026-07-23",
+  "verified": {
+    "test_count": 85,
+    "test_command": "uv run pytest --collect-only -q",
+    "python_requires": ">=3.10",
+    "commands": [
+      {
+        "name": "data",
+        "purpose": "Dataset preflight for speech/TTS corpora."
+      },
+      {
+        "name": "tokenizer",
+        "purpose": "Tokenizer preflight."
+      },
+      {
+        "name": "epoch",
+        "purpose": "First-epoch verdict from training logs."
+      },
+      {
+        "name": "doctor",
+        "purpose": "Flagship zero-config autopsy of training logs. Exposed under the alias 'diagnose'."
+      },
+      {
+        "name": "compare",
+        "purpose": "Compare a run log against a baseline log."
+      },
+      {
+        "name": "watch",
+        "purpose": "Live guardian: poll a training log."
+      },
+      {
+        "name": "preflight",
+        "purpose": "Pre-flight linter for LLM fine-tuning datasets."
+      }
+    ],
+    "features_added": [
+      {
+        "claim": "CONTRACTS.md documents exit codes, JSON schema policy, rule-ID stability, SARIF mapping, the verdict-stability guarantee, and the pre-1.0 breaking-change policy.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      },
+      {
+        "claim": "SARIF 2.1.0 output via --sarif PATH on data, tokenizer, epoch, doctor, compare and preflight, emitted independently of --json.",
+        "evidence": "src/trainproof/sarif.py:to_sarif"
+      },
+      {
+        "claim": "SARIF emission is decoupled from JSON mode: the file is written whether or not --json is passed.",
+        "evidence": "src/trainproof/cli.py:emit_sarif"
+      },
+      {
+        "claim": "--json extended to data, tokenizer and preflight; previously available on epoch, doctor and compare only.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      },
+      {
+        "claim": "Locked gallery snapshots in tests/golden/ pin the verdict and the complete rule-ID set for six runs and seven baseline comparisons, so a rule that stops firing and a rule that starts firing spuriously both fail the build.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      },
+      {
+        "claim": "A test enforces that rule IDs in source and in RULES.md match in both directions, and a test enforces that the two declared version strings agree.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      },
+      {
+        "claim": "Breaking: exit code 2 now means 'trainproof could not judge', covering unreadable logs, missing files, no parsed records and missing optional dependencies. Exit 1 is reserved for a FAIL verdict about the run.",
+        "evidence": "src/trainproof/cli.py:fail_to_run"
+      },
+      {
+        "claim": "Breaking: schema_version is now 2. doctor no longer emits a separate compare_findings key; single-run and baseline findings share one findings array, each tagged with source ('single_run' or 'compare'), and the envelope gained an error key.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      },
+      {
+        "claim": "'Cannot judge' messages are written to stderr, leaving stdout parseable.",
+        "evidence": "src/trainproof/cli.py:fail_to_run"
+      },
+      {
+        "claim": "An unreadable log reports worst_verdict null with a populated error key and exits 2, rather than reporting worst_verdict FAIL.",
+        "evidence": "src/trainproof/cli.py:fail_to_run"
+      },
+      {
+        "claim": "A missing transformers install is a tool error (exit 2), not a FAIL verdict about the dataset; rule TP-PRE-TRANSFORMERS-MISSING was removed.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      },
+      {
+        "claim": "Fixed: doctor --baseline printed FAIL comparison findings while exiting 0, because the exit code was computed from single-run verdicts alone. A failing baseline comparison now fails the run. Reproducing case: bad_labels against healthy.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      }
+    ],
+    "architecture_facts": [
+      {
+        "claim": "trainproof is a deterministic linter for ML training runs; its self-description in the CLI entry point contains no model, inference or scoring component.",
+        "evidence": "pyproject.toml:description"
+      },
+      {
+        "claim": "Findings are identified by stable string rule IDs of the form TP-*; 57 distinct rule IDs are present in the source tree at this version.",
+        "evidence": "src/trainproof/rules.py"
+      },
+      {
+        "claim": "Input is a training log parsed into an ordered list of scalar metric records; every rule judges those records, not model weights, activations or gradients.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "Three log formats are parsed: HuggingFace trainer_state, Coqui trainer log, and a generic CSV/text log, with automatic format detection and per-field mapping overrides.",
+        "evidence": "src/trainproof/adapters.py:parse_hf_trainer_state, src/trainproof/adapters.py:parse_coqui_trainer_log, src/trainproof/adapters.py:parse_generic_log"
+      },
+      {
+        "claim": "Exit code is derived from the verdict: 1 when the worst verdict is FAIL, 0 otherwise, and 2 when trainproof could not judge.",
+        "evidence": "src/trainproof/cli.py:output_json, src/trainproof/cli.py:fail_to_run"
+      },
+      {
+        "claim": "Runtime dependencies are numpy, soundfile and ttsproof; there is no ML framework, network client or telemetry dependency.",
+        "evidence": "pyproject.toml:dependencies"
+      }
+    ],
+    "limitations": [
+      {
+        "claim": "trainproof judges only what appears in a training log or configuration. It cannot observe model weights, activations, attention statistics or gradients, so failure modes that are only visible inside the training loop are out of scope.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "Log-format support is limited to HuggingFace trainer_state, Coqui trainer logs, and generic CSV/text. There is no TensorBoard adapter at this version.",
+        "evidence": "src/trainproof/adapters.py"
+      },
+      {
+        "claim": "A rule can only fire if the metric it judges is present in the log. Absent metrics yield no finding rather than a passing verdict.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "trainproof reports; it never modifies the training run, the user's code, or the log. No command writes to anything except its own report, JSON and SARIF outputs.",
+        "evidence": "src/trainproof/cli.py:emit_sarif"
+      },
+      {
+        "claim": "Exit code 2 is explicitly not a statement about the run. It means the tool could not judge, and CI that collapses all non-zero codes into failure will lose that distinction.",
+        "evidence": "src/trainproof/cli.py:fail_to_run"
+      },
+      {
+        "claim": "This is a pre-1.0 release. schema_version moved from 1 to 2 in this version and exit-code semantics changed; the breaking-change policy is stated in CONTRACTS.md.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      },
+      {
+        "claim": "No rule, threshold or verdict changed in 0.10.0. Every gallery verdict is byte-identical to v0.9, so detection capability at this version is unchanged from the previous release.",
+        "evidence": "CHANGELOG.md#0.10.0"
+      }
+    ]
+  },
+  "golden_qa": [
+    {
+      "question": "What does trainproof detect?",
+      "answer": "trainproof detects failure conditions in ML training runs by judging the scalar metric records parsed from a training log. Findings are identified by stable TP-* rule IDs, of which 57 distinct IDs exist in the source at this version. It judges logs and configuration only: model weights, activations, attention statistics and gradients are not observed, so failure modes visible only inside the training loop are out of scope.",
+      "evidence": [
+        "src/trainproof/rules.py",
+        "src/trainproof/adapters.py:parse_log_with_format_info",
+        "pyproject.toml:description"
+      ]
+    },
+    {
+      "question": "What problem does trainproof solve?",
+      "answer": "It separates 'your run failed' from 'the tool could not judge your run'. Exit 1 is reserved for a FAIL verdict about the run; exit 2 means trainproof could not judge, covering unreadable logs, missing files, no parsed records and missing optional dependencies. An unreadable log reports worst_verdict null with a populated error key rather than synthesising a FAIL, so CI can tell a doomed run from an unreadable file.",
+      "evidence": [
+        "src/trainproof/cli.py:fail_to_run",
+        "src/trainproof/cli.py:output_json",
+        "CHANGELOG.md#0.10.0"
+      ]
+    },
+    {
+      "question": "What commands does trainproof expose?",
+      "answer": "Seven subcommands: data (dataset preflight for speech/TTS corpora), tokenizer (tokenizer preflight), epoch (first-epoch verdict from training logs), doctor (flagship zero-config autopsy of training logs, aliased as diagnose), compare (compare a run log against a baseline log), watch (live guardian polling a training log), and preflight (pre-flight linter for LLM fine-tuning datasets).",
+      "evidence": [
+        "src/trainproof/cli.py:main",
+        "trainproof --help"
+      ]
+    },
+    {
+      "question": "What changed in version 0.10.0?",
+      "answer": "0.10.0 is a contract release: no rule, threshold or verdict moved, and every gallery verdict is byte-identical to v0.9. Added: CONTRACTS.md documenting exit codes, JSON schema policy, rule-ID stability, SARIF mapping and the pre-1.0 breaking-change policy; SARIF 2.1.0 output via --sarif PATH on six commands, emitted independently of --json; --json extended to data, tokenizer and preflight; locked gallery snapshots pinning verdict plus complete rule-ID set for six runs and seven baseline comparisons; and tests enforcing rule-ID/RULES.md agreement in both directions and version-string agreement. Breaking: exit code 2 now means 'could not judge', and schema_version moved to 2 with compare_findings folded into a single findings array tagged by source. Fixed: doctor --baseline printed FAIL comparison findings while exiting 0.",
+      "evidence": [
+        "CHANGELOG.md#0.10.0",
+        "src/trainproof/sarif.py:to_sarif",
+        "src/trainproof/cli.py:emit_sarif"
+      ]
+    },
+    {
+      "question": "What are trainproof's limitations?",
+      "answer": "It judges only what appears in a training log or configuration, so failures visible only inside the training loop are out of scope. Log-format support is limited to HuggingFace trainer_state, Coqui trainer logs and generic CSV/text; there is no TensorBoard adapter at this version. A rule fires only if the metric it judges is present in the log; an absent metric yields no finding rather than a passing verdict. trainproof reports and never modifies the run, the user's code or the log. Exit code 2 is not a statement about the run, and CI that collapses all non-zero codes into failure loses that distinction. This is a pre-1.0 release: schema_version moved from 1 to 2 and exit-code semantics changed in this version.",
+      "evidence": [
+        "src/trainproof/adapters.py",
+        "src/trainproof/cli.py:fail_to_run",
+        "src/trainproof/cli.py:emit_sarif",
+        "CHANGELOG.md#0.10.0"
+      ]
+    },
+    {
+      "question": "How does trainproof integrate with CI?",
+      "answer": "Every command sets a process exit code: 1 when the worst verdict is FAIL, 0 otherwise, 2 when trainproof could not judge. SARIF 2.1.0 output via --sarif PATH turns findings into GitHub pull-request annotations and is written whether or not --json is passed. Runtime dependencies are numpy, soundfile and ttsproof, with no ML framework, network client or telemetry dependency.",
+      "evidence": [
+        "src/trainproof/cli.py:output_json",
+        "src/trainproof/cli.py:emit_sarif",
+        "src/trainproof/sarif.py:to_sarif",
+        "pyproject.toml:dependencies"
+      ]
+    },
+    {
+      "question": "What Python versions does trainproof support?",
+      "answer": "Python 3.10 and newer.",
+      "evidence": [
+        "pyproject.toml:requires-python"
+      ]
+    },
+    {
+      "question": "How is trainproof tested?",
+      "answer": "85 tests are collected at this version via 'uv run pytest --collect-only -q'. Gallery snapshots in tests/golden/ pin the verdict and the complete rule-ID set for six runs and seven baseline comparisons, so both a rule that stops firing and a rule that starts firing spuriously fail the build. Further tests enforce that rule IDs in source and in RULES.md match in both directions, and that the two declared version strings agree.",
+      "evidence": [
+        "uv run pytest --collect-only -q",
+        "CHANGELOG.md#0.10.0"
+      ]
+    }
+  ],
+  "generated_by": "release thread",
+  "generated_at": "2026-07-23T16:53:31Z"
+}

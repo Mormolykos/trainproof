@@ -1,0 +1,285 @@
+{
+  "project": "trainproof",
+  "version": "0.11.0",
+  "release_date": "2026-07-30",
+  "verified": {
+    "test_count": 116,
+    "test_command": "python -m pytest --collect-only -q",
+    "python_requires": ">=3.10",
+    "commands": [
+      {
+        "name": "data",
+        "purpose": "Dataset preflight for speech/TTS corpora."
+      },
+      {
+        "name": "tokenizer",
+        "purpose": "Tokenizer preflight."
+      },
+      {
+        "name": "epoch",
+        "purpose": "First-epoch verdict from training logs."
+      },
+      {
+        "name": "doctor",
+        "purpose": "Flagship zero-config autopsy of training logs. Exposed under the alias 'diagnose'."
+      },
+      {
+        "name": "compare",
+        "purpose": "Compare a run log against a baseline log."
+      },
+      {
+        "name": "watch",
+        "purpose": "Live guardian: poll a training log."
+      },
+      {
+        "name": "preflight",
+        "purpose": "Pre-flight linter for LLM fine-tuning datasets."
+      }
+    ],
+    "features_added": [
+      {
+        "claim": "All three seeds of every gallery configuration now ship: 18 runs, six configurations at seeds 42, 43 and 44. Previously one seed per configuration was committed, so 'three seeds out of three' was a claim a reader could not check.",
+        "evidence": "CHANGELOG.md#0.11.0"
+      },
+      {
+        "claim": "The overfit configuration gained seeds 43 and 44, completing the only configuration that had a single seed. TP-OVERFIT fires in all three.",
+        "evidence": "examples/gallery/overfit/"
+      },
+      {
+        "claim": "Seed 42 remains at each configuration root and seeds 43 and 44 are nested beside it, so every previously documented gallery path still resolves.",
+        "evidence": "examples/gallery/README.md"
+      },
+      {
+        "claim": "run_meta.json now records the seed for every run.",
+        "evidence": "examples/gallery/healthy/run_meta.json"
+      },
+      {
+        "claim": "21 new golden snapshots cover every seeded run and its comparison against the same-seed baseline; 38 snapshots in total.",
+        "evidence": "tests/test_golden_gallery.py"
+      },
+      {
+        "claim": "A cross-seed sanity check judges a healthy run against a healthy baseline from a different seed and requires it to stay clean, which is the false-positive check a same-seed comparison cannot make. It passes for all three pairs.",
+        "evidence": "tests/test_golden_gallery.py:test_cross_seed_healthy_baseline_is_clean"
+      },
+      {
+        "claim": "examples/real_world/xtts_diverged/ adds a 9.8-hour Coqui XTTS v2 fine-tune that diverged on its own: the first shipped failure nobody injected, and the repository's only Coqui-format fixture.",
+        "evidence": "examples/real_world/README.md"
+      },
+      {
+        "claim": "EVIDENCE_MATRIX.md is generated from the gallery logs by scripts/regenerate_evidence.py, stamped with the generating version, and carries the rule IDs that fired in each cell rather than a bare verdict.",
+        "evidence": "scripts/regenerate_evidence.py"
+      },
+      {
+        "claim": "A test regenerates EVIDENCE_MATRIX.md and fails if the committed file differs, so the published evidence document cannot drift from the logs it describes. It had drifted: it published v0.3-dev verdicts against a v0.10 engine.",
+        "evidence": "tests/test_golden_gallery.py:test_evidence_matrix_is_current"
+      },
+      {
+        "claim": "The gallery coverage guard now enforces one level down: a nested seed log that no test judges fails the build, exactly as an unjudged configuration folder always has.",
+        "evidence": "tests/test_golden_gallery.py:test_gallery_has_no_uncovered_runs"
+      },
+      {
+        "claim": "'python -m trainproof' now works. It previously failed with \"'trainproof' is a package and cannot be directly executed\", which reads like a broken install.",
+        "evidence": "src/trainproof/__main__.py"
+      },
+      {
+        "claim": "Changed: the self-contained HTML report is opt-in via 'epoch --html [PATH]'. It was previously written into the caller's working directory on every invocation, unasked, and littered this project's own test runs. CONTRACTS.md excludes the HTML report from the stability contract.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "Changed: compare labels table rows with the shortest path suffix that distinguishes them. Every gallery log is named trainer_state.json, so both rows rendered identically and reversing the baseline and run arguments produced a plausible, fully inverted verdict with nothing to flag it. Console layout is outside the stability contract.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "No rule and no threshold changed in 0.11.0. Every verdict that existed in 0.10.0 is byte-identical in tests/golden/, so detection capability is unchanged from the previous release.",
+        "evidence": "CHANGELOG.md#0.11.0"
+      }
+    ],
+    "architecture_facts": [
+      {
+        "claim": "trainproof is a deterministic linter for ML training runs; its self-description in the CLI entry point contains no model, inference or scoring component.",
+        "evidence": "pyproject.toml:description"
+      },
+      {
+        "claim": "Findings are identified by stable string rule IDs of the form TP-*; 57 distinct rule IDs are present in the source tree at this version, unchanged from 0.10.0 because no rule was added or altered.",
+        "evidence": "src/trainproof/rules.py"
+      },
+      {
+        "claim": "Input is a training log parsed into an ordered list of scalar metric records; every rule judges those records, not model weights, activations or gradients.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "Three log formats are parsed: HuggingFace trainer_state, Coqui trainer log, and a generic CSV/text log, with automatic format detection and per-field mapping overrides.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "Exit code is derived from the verdict: 1 when the worst verdict is FAIL, 0 otherwise, and 2 when trainproof could not judge.",
+        "evidence": "src/trainproof/cli.py:fail_to_run"
+      },
+      {
+        "claim": "Runtime dependencies are numpy, soundfile and ttsproof; there is no ML framework, network client or telemetry dependency.",
+        "evidence": "pyproject.toml:dependencies"
+      },
+      {
+        "claim": "The console script and 'python -m trainproof' both call the same main(), so the two entry points cannot diverge on exit codes; a parametrised test asserts agreement on 0, 1 and 2.",
+        "evidence": "src/trainproof/__main__.py"
+      },
+      {
+        "claim": "soundfile and ttsproof are required only by the speech-corpus data subcommand; judging a training log imports neither, and imports no ML framework.",
+        "evidence": "src/trainproof/speech/data.py"
+      }
+    ],
+    "limitations": [
+      {
+        "claim": "trainproof judges only what appears in a training log or configuration. It cannot observe model weights, activations, attention statistics or gradients, so failure modes that are only visible inside the training loop are out of scope.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "A single run's loss curve cannot detect a corrupted dataset. The shipped bad_labels runs improve 62.5, 62.8 and 61.9 percent while the healthy baseline improves 14.7, 23.0 and 25.1 percent, and the single-run rules reach only WARN on them. Detecting that class of failure requires comparison against a known-good baseline.",
+        "evidence": "EVIDENCE_MATRIX.md"
+      },
+      {
+        "claim": "Comparison is not sufficient either: the overfit configuration is caught by the single-run rules in all three seeds and missed by comparison in all three. Neither mode subsumes the other.",
+        "evidence": "EVIDENCE_MATRIX.md"
+      },
+      {
+        "claim": "Log-format support is limited to HuggingFace trainer_state, Coqui trainer logs, and generic CSV/text. There is no TensorBoard adapter at this version.",
+        "evidence": "src/trainproof/adapters.py"
+      },
+      {
+        "claim": "A rule can only fire if the metric it judges is present in the log. Absent metrics are reported as skipped rather than as a passing verdict.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "trainproof reports; it never modifies the training run, the user's code, or the log. As of 0.11.0 it writes nothing to disk unless asked via --html or --sarif.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "Exit code 2 is explicitly not a statement about the run. It means the tool could not judge, and CI that collapses all non-zero codes into failure will lose that distinction.",
+        "evidence": "CONTRACTS.md"
+      },
+      {
+        "claim": "The 18-run gallery is one model family: Qwen2.5-3B-Instruct QLoRA on a single dataset. The shipped Coqui XTTS log is the only evidence from a different trainer and a different model, so breadth of evidence across training stacks is limited at this version.",
+        "evidence": "examples/gallery/README.md"
+      },
+      {
+        "claim": "The shipped real-world log is minimally redacted: one local filesystem path prefix was replaced in 14 lines. No number, timestamp or step was altered, and the verdict and evidence strings are byte-identical before and after.",
+        "evidence": "examples/real_world/README.md"
+      },
+      {
+        "claim": "This is a pre-1.0 release. Two documented default behaviours changed in this version, both outside the stability contract; the breaking-change policy is stated in CONTRACTS.md.",
+        "evidence": "CONTRACTS.md"
+      }
+    ]
+  },
+  "golden_qa": [
+    {
+      "question": "What does trainproof detect?",
+      "answer": "trainproof detects failure conditions in ML training runs by judging the scalar metric records parsed from a training log. Findings are identified by stable TP-* rule IDs, of which 57 distinct IDs exist in the source at this version, unchanged from 0.10.0 because no rule was added or altered in this release. It judges logs and configuration only: model weights, activations, attention statistics and gradients are not observed, so failure modes visible only inside the training loop are out of scope.",
+      "evidence": [
+        "src/trainproof/rules.py",
+        "src/trainproof/adapters.py:parse_log_with_format_info",
+        "pyproject.toml:description",
+        "CHANGELOG.md#0.11.0"
+      ]
+    },
+    {
+      "question": "What problem does trainproof solve?",
+      "answer": "It separates 'your run failed' from 'the tool could not judge your run'. Exit 1 is reserved for a FAIL verdict about the run; exit 2 means trainproof could not judge, covering unreadable logs, missing files, no parsed records and missing optional dependencies. An unreadable log reports worst_verdict null with a populated error key rather than synthesising a FAIL, so CI can tell a doomed run from an unreadable file.",
+      "evidence": [
+        "src/trainproof/cli.py:fail_to_run",
+        "src/trainproof/cli.py:output_json",
+        "CONTRACTS.md"
+      ]
+    },
+    {
+      "question": "What commands does trainproof expose?",
+      "answer": "Seven subcommands: data (dataset preflight for speech/TTS corpora), tokenizer (tokenizer preflight), epoch (first-epoch verdict from training logs), doctor (flagship zero-config autopsy of training logs, aliased as diagnose), compare (compare a run log against a baseline log), watch (live guardian polling a training log), and preflight (pre-flight linter for LLM fine-tuning datasets). Both the trainproof console script and 'python -m trainproof' invoke the same entry point and agree on every exit code.",
+      "evidence": [
+        "src/trainproof/cli.py:main",
+        "src/trainproof/__main__.py",
+        "tests/test_contracts.py:test_module_entry_point_matches_the_exit_code_contract"
+      ]
+    },
+    {
+      "question": "What changed in version 0.11.0?",
+      "answer": "0.11.0 is an evidence release: no rule and no threshold changed, and every verdict that existed in 0.10.0 is byte-identical in tests/golden/. What changed is how much evidence ships and whether the documentation describing it can drift from the data. All three seeds of every gallery configuration now ship (18 runs: 6 configs at seeds 42, 43 and 44), where previously only one seed per configuration was committed, so 'three seeds out of three' became a checkable claim rather than an assertion. The overfit configuration gained seeds 43 and 44. A real-world Coqui XTTS log that diverged on its own was added, the first shipped failure nobody injected. EVIDENCE_MATRIX.md is now generated from the logs by scripts/regenerate_evidence.py, stamped with the generating version and carrying the rule IDs that fired in each cell; a test fails the build if it goes stale, which it had, publishing v0.3-dev verdicts against a v0.10 engine. 'python -m trainproof' now works. Two behaviour changes: the HTML report is opt-in via 'epoch --html [PATH]' instead of being written into the caller's working directory on every run, and compare labels table rows with enough path to distinguish them, because every gallery log is named trainer_state.json and reversing the baseline and run arguments used to produce a plausible inverted verdict with nothing to flag it. Both are outside the stability contract.",
+      "evidence": [
+        "CHANGELOG.md#0.11.0",
+        "scripts/regenerate_evidence.py",
+        "tests/test_golden_gallery.py:test_evidence_matrix_is_current",
+        "src/trainproof/__main__.py",
+        "CONTRACTS.md"
+      ]
+    },
+    {
+      "question": "What evidence ships with trainproof, and can it be reproduced?",
+      "answer": "Nineteen real training logs ship in the repository. Eighteen are the fault-injection gallery in examples/gallery/: a Qwen2.5-3B-Instruct QLoRA fine-tune (4-bit NF4, LoRA r=16, 300 steps on Alpaca-cleaned) in six configurations, one healthy and five with exactly one knob deliberately broken, each repeated at seeds 42, 43 and 44. The nineteenth is examples/real_world/xtts_diverged/, a 9.8-hour Coqui XTTS v2 fine-tune that diverged without anyone breaking it, and the repository's only Coqui-format fixture. Every one of the nineteen has its verdict and complete rule-ID set pinned in tests/golden/, 38 snapshots in total, so a rule that stops firing and a rule that starts firing spuriously both fail the build. EVIDENCE_MATRIX.md is regenerated from those same logs rather than maintained by hand.",
+      "evidence": [
+        "examples/gallery/README.md",
+        "examples/real_world/README.md",
+        "tests/test_golden_gallery.py",
+        "EVIDENCE_MATRIX.md",
+        "scripts/regenerate_evidence.py"
+      ]
+    },
+    {
+      "question": "Can a single training run's loss curve detect a corrupted dataset?",
+      "answer": "No, and trainproof states this rather than implying otherwise. In the shipped bad_labels configuration the labels are shuffled per sequence, so the task cannot be learned at all, yet trainproof measures its improvement at 62.5, 62.8 and 61.9 percent across seeds 42, 43 and 44, while the healthy baseline improves only 14.7, 23.0 and 25.1 percent. On its own curve the run that cannot learn looks like the better training run, because it is fitting the marginal token statistics of noise. The single-run rules reach only WARN on it, and the finding that fires is an unrelated gradient spike rather than any loss rule. What identifies it is relative: a loss floor 6.0, 5.7 and 5.8 times the same-seed baseline's, which requires a baseline to see. That is why trainproof compare exists, and it catches bad_labels in three seeds out of three. The reverse also holds: the overfit configuration is caught by the single-run rules in all three seeds and missed by comparison in all three, so neither mode is sufficient alone.",
+      "evidence": [
+        "EVIDENCE_MATRIX.md",
+        "examples/gallery/bad_labels/",
+        "src/trainproof/compare.py",
+        "tests/golden/compare_bad_labels_seed43_vs_healthy.json"
+      ]
+    },
+    {
+      "question": "Does trainproof require a GPU, an ML framework, or specific hardware?",
+      "answer": "No. The analysis path contains no torch, CUDA or device code; trainproof reads the JSON or text log that a trainer has already written. Runtime dependencies are numpy, soundfile and ttsproof, and the latter two exist for the speech-corpus data subcommand only: a training-log check imports none of them, importing in roughly 16 milliseconds. The shipped gallery was produced on an RTX 5080, which is where the logs came from rather than a requirement for judging them. Pointed at a log from an unrelated project, trainproof reports which checks it ran and which it skipped for absent data, for example 'Ran: loss-shape, divergence, dead-run, lr. Skipped (no data): grad-norm, timing.' A missing metric is reported as skipped, never as a pass.",
+      "evidence": [
+        "pyproject.toml:dependencies",
+        "src/trainproof/adapters.py:parse_log_with_format_info",
+        "src/trainproof/epoch.py",
+        "examples/gallery/README.md"
+      ]
+    },
+    {
+      "question": "What are trainproof's limitations?",
+      "answer": "It judges only what appears in a training log or configuration, so failures visible only inside the training loop are out of scope. A single run's loss curve cannot detect a corrupted dataset; that requires comparison against a known-good baseline. Log-format support is limited to HuggingFace trainer_state, Coqui trainer logs and generic CSV/text, and there is no TensorBoard adapter at this version. A rule fires only if the metric it judges is present; an absent metric yields no finding rather than a passing verdict. trainproof reports and never modifies the run, the user's code or the log, and as of 0.11.0 writes nothing to disk unless asked. Exit code 2 is not a statement about the run, so CI that collapses all non-zero codes into failure loses that distinction. This is a pre-1.0 release and the breaking-change policy is stated in CONTRACTS.md.",
+      "evidence": [
+        "src/trainproof/adapters.py",
+        "src/trainproof/cli.py:fail_to_run",
+        "CONTRACTS.md",
+        "EVIDENCE_MATRIX.md"
+      ]
+    },
+    {
+      "question": "How does trainproof integrate with CI?",
+      "answer": "Every command sets a process exit code: 1 when the worst verdict is FAIL, 0 otherwise, 2 when trainproof could not judge. SARIF 2.1.0 output via --sarif PATH turns findings into GitHub pull-request annotations and is written whether or not --json is passed. As of 0.11.0 nothing else is written to disk unless requested, so a CI job's working directory stays clean unless 'epoch --html [PATH]' is passed explicitly. There is no ML framework, network client or telemetry dependency, and a log-only check loads no numpy and no CUDA.",
+      "evidence": [
+        "src/trainproof/cli.py:output_json",
+        "src/trainproof/cli.py:emit_sarif",
+        "src/trainproof/sarif.py:to_sarif",
+        "CHANGELOG.md#0.11.0"
+      ]
+    },
+    {
+      "question": "What Python versions does trainproof support?",
+      "answer": "Python 3.10 and newer.",
+      "evidence": [
+        "pyproject.toml:requires-python"
+      ]
+    },
+    {
+      "question": "How is trainproof tested?",
+      "answer": "116 tests are collected at this version via 'python -m pytest --collect-only -q'. Snapshots in tests/golden/ pin the verdict and the complete rule-ID set for all nineteen shipped logs and their baseline comparisons, 38 snapshots in total, so both a rule that stops firing and a rule that starts firing spuriously fail the build. A coverage guard asserts that every gallery folder and every nested seed folder has a snapshot, so a log no test judges fails the build rather than sitting in the repository unjudged. A further test regenerates EVIDENCE_MATRIX.md and fails if the committed file differs, so the published evidence document cannot drift from the logs it describes. Others enforce that rule IDs in source and in RULES.md match in both directions, that the two declared version strings agree, and that the console script and 'python -m trainproof' return identical exit codes for pass, fail and cannot-judge.",
+      "evidence": [
+        "python -m pytest --collect-only -q",
+        "tests/test_golden_gallery.py",
+        "tests/test_contracts.py",
+        "CONTRACTS.md"
+      ]
+    }
+  ],
+  "generated_by": "release.ps1",
+  "generated_at": "2026-07-30T07:27:43Z"
+}

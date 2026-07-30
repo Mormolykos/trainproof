@@ -4,6 +4,74 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.11.0] — 2026-07-30 — the evidence release
+
+No rule and no threshold changed. Every verdict that existed in v0.10 is
+byte-identical in `tests/golden/`. What changed is how much evidence ships, and
+whether the documentation describing it can drift away from the data.
+
+The 5x3 seed study had existed since v0.3 but only one seed per configuration was
+ever committed, so "3 seeds out of 3" was a claim a reader could not check. All
+eighteen runs now ship and all eighteen are judged.
+
+### Added
+- **All three seeds of every gallery configuration** (18 runs: 6 configs x seeds
+  42/43/44). Seed 42 stays at each config root; 43 and 44 are nested beside it, so
+  every previously documented path still resolves. `run_meta.json` now records the
+  seed.
+- **`overfit` at seeds 43 and 44**, completing the only configuration that had a
+  single seed. `TP-OVERFIT` fires in all three.
+- **21 new golden snapshots** covering every seeded run and its comparison against
+  the same-seed baseline, plus a cross-seed sanity check (healthy judged against
+  healthy from a *different* seed, which must stay clean — it does, 3/3).
+- **`scripts/regenerate_evidence.py`**: `EVIDENCE_MATRIX.md` is now generated from
+  the logs, stamped with the generating version, and carries the rule IDs that
+  fired in every cell rather than a bare verdict. `--check` fails if it is stale,
+  and `test_evidence_matrix_is_current` runs that check in the suite. The matrix
+  had been publishing v0.3-dev verdicts against a v0.10 engine.
+- **`python -m trainproof`** now works. It previously failed with "'trainproof' is
+  a package and cannot be directly executed", which reads like a broken install.
+  Both entry points call the same `main()`, and a parametrised contract test
+  asserts they agree on exit codes 0, 1 and 2.
+- The gallery guard now enforces coverage one level down: a seed log that no test
+  judges fails the build, exactly as an unjudged config folder always has.
+- **`examples/real_world/xtts_diverged/`**: a 9.8-hour Coqui XTTS v2 fine-tune that
+  diverged on its own. Every other log in this repo is a fault injected on purpose,
+  which is the right way to test a rule and a weak way to show the tool matters.
+  This one broke by itself, and it is the repo's only Coqui-format fixture, so it
+  regression-tests that adapter against a real 580KB log. Its verdict is locked in
+  `tests/golden/` like everything else.
+
+  The log's own bookkeeping corroborates the verdict independently: trainproof puts
+  the loss minimum at step 48,350, Coqui's last `BEST MODEL` line is
+  `best_model_49880.pth`, and the last checkpoint written is `checkpoint_70000.pth`.
+  Roughly 23,000 steps ran after the best weights already existed.
+
+  One local filesystem prefix is replaced with `<TTS>` in 14 lines. No number,
+  timestamp or step was altered, and the verdict and evidence strings are
+  byte-identical before and after; the unredacted original is retained privately as
+  the provenance record. Disclosed rather than done quietly, because a modified
+  evidence file that doesn't say so is worth nothing.
+
+### Changed
+- **`epoch --html [PATH]` is opt-in.** The self-contained HTML report used to be
+  written into the caller's working directory on every invocation, unasked — it
+  littered this project's own test runs, which is how it was noticed. Bare `--html`
+  keeps the old `trainproof_report.html` filename. Not a contract change:
+  CONTRACTS.md explicitly excludes the HTML report.
+- **`compare` now labels rows with enough path to tell them apart.** Every
+  gallery log is named `trainer_state.json`, so both rows rendered identically and
+  reversing the baseline and run arguments produced a plausible, fully inverted
+  verdict with nothing to flag it. The shortest distinguishing path suffix is used,
+  deepening automatically when needed. Console layout is outside the contract.
+
+### Fixed
+- Documentation corrected against the data it describes: the gallery is six
+  configurations and eighteen runs, not "five runs, four broken"; the `overfit`
+  configuration was missing from both README tables; and the `bad_labels` example
+  now quotes start and end in one measurement system (15.3 → 5.75, trainproof's
+  windowed values) instead of mixing the raw first logged loss with the tool's end.
+
 ## [0.10.0] — 2026-07-23 — the contract release
 
 Nothing about how trainproof judges a run changed in this release. No rule, no

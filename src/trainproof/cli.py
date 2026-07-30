@@ -89,6 +89,7 @@ def _run():
     epoch_parser.add_argument("--map", action="append", help="Override log column mapping (e.g. loss=my_loss)")
     epoch_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
     epoch_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
+    epoch_parser.add_argument("--html", type=str, metavar="PATH", nargs="?", const="trainproof_report.html", help="Also write a self-contained HTML report (bare flag uses trainproof_report.html)")
 
     # Doctor Command
     doctor_parser = subparsers.add_parser("doctor", aliases=["diagnose"], help="Flagship zero-config autopsy of training logs.")
@@ -267,10 +268,25 @@ def _run():
             baseline_records = parse_log_with_format(args.baseline, args.format, mapping_overrides)
             base_metrics = extract_metrics(baseline_records) if baseline_records else None
             
+            # Every gallery log is named trainer_state.json, so bare filenames leave
+            # the baseline and the runs indistinguishable -- and reversing the two
+            # arguments then produces a plausible, inverted verdict with nothing to
+            # flag it. Show the shortest path suffix that tells them apart.
+            paths = [args.baseline, *args.runs]
+            parts = [Path(p).resolve().parts for p in paths]
+            distinct = len(set(parts))
+            labels = [Path(p).name for p in paths]
+            for depth in range(1, max(len(q) for q in parts) + 1):
+                candidate = ["/".join(q[-depth:]) for q in parts]
+                if len(set(candidate)) == distinct:
+                    labels = candidate
+                    break
+            label_of = dict(zip(paths, labels))
+
             table_results = []
             if base_metrics:
                 table_results.append({
-                    "name": str(Path(args.baseline).name) + " (BASE)",
+                    "name": label_of[args.baseline] + " (BASE)",
                     "start": base_metrics["start_med"],
                     "floor": base_metrics["floor"],
                     "end": base_metrics["end_med"],
@@ -288,7 +304,7 @@ def _run():
                 run_metrics = extract_metrics(run_records) if run_records else None
                 if run_metrics:
                     table_results.append({
-                        "name": str(Path(run_path).name),
+                        "name": label_of[run_path],
                         "start": run_metrics["start_med"],
                         "floor": run_metrics["floor"],
                         "end": run_metrics["end_med"],
@@ -340,9 +356,14 @@ def _run():
     print_verdict_console(report_dict.get("verdict", "FAIL"), report_dict.get("findings", []))
     emit_sarif([report_dict])
 
-    html_out = Path("trainproof_report.html")
-    write_html_report(report_dict, html_out)
-    print(f"\nSaved detailed HTML report to {html_out.absolute()}")
+    # Opt-in since 0.11.0. This used to write into the caller's working directory
+    # on every single run, unasked -- it littered this project's own test suite,
+    # which is how the smell was finally noticed. CONTRACTS.md explicitly excludes
+    # the HTML report from the stability contract, so this breaks no promise.
+    if getattr(args, "html", None):
+        html_out = Path(args.html)
+        write_html_report(report_dict, html_out)
+        print(f"\nSaved detailed HTML report to {html_out.absolute()}")
     
     if report_dict.get("verdict") == "FAIL":
         sys.exit(1)
