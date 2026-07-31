@@ -146,6 +146,10 @@
         "evidence": "src/trainproof/adapters.py"
       },
       {
+        "claim": "The tokenizer and context-length checks in preflight require transformers, which is not a runtime dependency. Without it those checks cannot run and trainproof exits 2 with a one-line reason rather than returning a verdict about the dataset; the JSONL, empty-text and duplicate checks still run without it. Rule TP-PRE-TRANSFORMERS-MISSING was removed in 0.10.0 because a missing tool dependency is not a finding about the user's data.",
+        "evidence": "src/trainproof/preflight.py"
+      },
+      {
         "claim": "A rule can only fire if the metric it judges is present in the log. Absent metrics are reported as skipped rather than as a passing verdict.",
         "evidence": "src/trainproof/epoch.py"
       },
