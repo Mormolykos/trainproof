@@ -12,33 +12,47 @@ def extract_metrics(records):
     for r in records:
         loss = r.get("loss")
         gn = r.get("grad_norm")
-        
+
         if loss is not None and not math.isnan(loss) and not math.isinf(loss):
             losses.append(loss)
         if gn is not None and not math.isnan(gn) and not math.isinf(gn):
             grad_norms.append(gn)
-            
+
     if len(losses) < 10:
         return None
-        
+
     floor = min(losses)
-    
+
     w = rules.LOSS_IMPROVEMENT_WINDOW
     start_med = sorted(losses[:w])[w // 2]
     end_med = sorted(losses[-w:])[w // 2]
-    
-    improvement = 1.0 - (end_med / start_med) if start_med > 0 else 0.0
-    
+
+    # A run whose losses are all exactly zero has no scale to compare on. Its
+    # floor (0.0) beats every possible baseline, so TP-FLOOR-RATIO and
+    # TP-END-RATIO cannot fire; and substituting 0.0 for an undefined
+    # improvement -- which this function used to do -- kept TP-NEG-IMPROVE
+    # quiet too. Against a baseline that had not itself improved, nothing fired
+    # at all and the report read TP-CMP-PASS, "compares favorably", for a run
+    # that learned nothing. Mark it instead and let check_compare refuse.
+    degenerate = None
+    if all(l == 0.0 for l in losses):
+        degenerate = "every logged loss is exactly 0.0"
+    elif start_med <= 0:
+        degenerate = "starting loss is not positive - relative improvement is undefined"
+
+    improvement = None if degenerate else 1.0 - (end_med / start_med)
+
     gn_median = None
     if len(grad_norms) > 5:
         sorted_gns = sorted(grad_norms)
         gn_median = sorted_gns[len(sorted_gns) // 2]
-        
+
     return {
         "floor": floor,
         "start_med": start_med,
         "end_med": end_med,
         "improvement": improvement,
+        "degenerate": degenerate,
         "gn_median": gn_median,
         "losses_len": len(losses)
     }
@@ -69,6 +83,30 @@ def check_compare(run_path: str | Path, base_path: str | Path, fmt: str = "auto"
     if not base_metrics:
         return {"verdict": "FAIL", "findings": [{"id": "TP-NO-LOSS", "level": "FAIL", "message": "Baseline log has fewer than 10 valid loss points.", "evidence": str(base_path)}]}
 
+    # Refuse to compare when either side has no usable loss scale, and refuse
+    # BEFORE the ratio rules below, all of which a zero floor passes. The
+    # principle is the one stated for exit code 2 in CONTRACTS.md: never
+    # synthesise a verdict trainproof cannot support. A meaningless comparison
+    # reported as a favorable one is worse than no comparison at all.
+    uncomparable = []
+    for side, metrics, path in (
+        ("run", run_metrics, run_path),
+        ("baseline", base_metrics, base_path),
+    ):
+        if metrics["degenerate"]:
+            uncomparable.append({
+                "id": "TP-CMP-UNCOMPARABLE",
+                "level": "FAIL",
+                "message": f"Cannot compare: the {side} has no usable loss scale.",
+                "evidence": (
+                    f"{side} {path}: {metrics['degenerate']}. Its loss floor of "
+                    f"{metrics['floor']:.3f} would beat any baseline, so none of the ratio "
+                    "rules can judge it."
+                ),
+            })
+    if uncomparable:
+        return {"verdict": "FAIL", "findings": findings + uncomparable}
+
     # Floor ratio
     if run_metrics["floor"] > base_metrics["floor"] * rules.MAX_FLOOR_RATIO:
         verdict = "FAIL"
@@ -90,10 +128,11 @@ def check_compare(run_path: str | Path, base_path: str | Path, fmt: str = "auto"
             "evidence": f"Run end {run_metrics['end_med']:.3f} vs Baseline end {base_metrics['end_med']:.3f} (ratio {(run_metrics['end_med'] / base_metrics['end_med']):.1f}x > {rules.MAX_END_RATIO})"
         })
 
-    # Improvement deficit
+    # Improvement deficit. Both improvements are guaranteed non-None here: a
+    # side with an undefined improvement is degenerate and returned above.
     run_imp = run_metrics["improvement"]
     base_imp = base_metrics["improvement"]
-    
+
     if run_imp < 0:
         verdict = "FAIL"
         findings.append({

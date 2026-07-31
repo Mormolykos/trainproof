@@ -32,6 +32,11 @@ pip install trainproof
 
 Run the flagship zero-config autopsy on any directory. It discovers all training logs, parses them automatically, and delivers a plain-English diagnosis.
 
+Note what a PASS actually says: it names the checks that ran **and every check
+that did not, with the reason**. This log carries no eval signal, so the
+overfit check could not run — and the report says so rather than letting a
+clean verdict imply it was covered.
+
 ```bash
 trainproof doctor .
 ```
@@ -40,12 +45,17 @@ trainproof doctor .
 ============================================================
 FILE   : examples/gallery/healthy/trainer_state.json
 FORMAT : hf
-RECORDS: 16 (steps/epochs: 20..300)
+RECORDS: 60 (steps/epochs: 5.0..300.0)
 ------------------------------------------------------------
 VERDICT: PASS
 ------------------------------------------------------------
-[PASS] Loss curve shows healthy shape, grad norms are stable.
-       Evidence: 16 steps analyzed.
+[PASS] TP-PASS: No mechanical failures detected. Ran: dead-run,
+       divergence, flat-loss, grad-spike, lr, zero-grad, zero-loss.
+       Skipped: loader (no loader_time/step_time pair in the log);
+       overfit (no eval_loss in the log - this run has no
+       generalisation signal at all); step-time (no step_time column
+       in the log).
+       Evidence: 60 steps analyzed.
 
 ------------------------------------------------------------
 Findings: 1 PASS, 0 WARN, 0 FAIL
@@ -319,8 +329,12 @@ training project on a user's behalf:
   mean. Parse ids, never message text.
 - Exit `1` is a FAIL verdict about the run. Exit `2` means trainproof could
   not judge it — report that as a tool problem, never as a failed run.
-- A `TP-PASS` verdict lists which checks ran and which were skipped for lack
-  of data — do not report stability of anything in the skipped list.
+- A `TP-PASS` verdict lists which checks ran and which were skipped, each with
+  its reason — no data, too few points, or a series too degenerate to measure.
+  Reports also carry this as structured data under `checks` (`ran`, and
+  `skipped` as group → reason); parse that, not the prose. **Do not report
+  stability of anything in the skipped list — a skipped check is not a passed
+  check.**
 - These verdicts are deterministic threshold rules, not model judgments.
   Relay them as measurements with their cited evidence, not as opinions.
 

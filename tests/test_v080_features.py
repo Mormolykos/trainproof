@@ -76,14 +76,35 @@ def test_json_output(tmp_path, capsys):
     assert "id" in data["reports"][0]["findings"][0]
 
 def test_honest_tp_pass():
+    # CHANGED in v0.11.1. This used to assert two literal strings:
+    # "Ran: loss-shape, divergence, dead-run" and
+    # "Skipped (no data): grad-norm, lr, timing". Both were pinned to a
+    # HARDCODED group list -- the very thing that let TP-PASS name checks the
+    # `> 0` guards had skipped. The intent of the test is unchanged; it now
+    # asserts against the structured `checks` key, because CONTRACTS.md says
+    # message text is prose and may be reworded in any release.
     records = []
     for i in range(15):
         records.append({"step": i, "loss": 0.5 - i*0.01})
     report = check_records(records)
     assert report["verdict"] == "PASS"
     pass_finding = next(f for f in report["findings"] if f["id"] == "TP-PASS")
-    assert "Ran: loss-shape, divergence, dead-run" in pass_finding["message"]
-    assert "Skipped (no data): grad-norm, lr, timing" in pass_finding["message"]
+
+    # this log carries loss and nothing else: the loss-shape checks run, and
+    # every check that needs another column must report itself as skipped
+    assert set(report["checks"]["ran"]) == {
+        "zero-loss", "flat-loss", "divergence", "dead-run",
+    }
+    assert set(report["checks"]["skipped"]) == {
+        "zero-grad", "grad-spike", "lr", "step-time", "loader", "overfit",
+    }
+
+    ran_segment = pass_finding["message"].split("Skipped:")[0]
+    for group in report["checks"]["ran"]:
+        assert group in ran_segment
+    for group in report["checks"]["skipped"]:
+        assert group not in ran_segment
+        assert group in pass_finding["message"]
 
 def test_gallery_regression(capsys):
     gallery = Path(__file__).parent.parent / "examples" / "gallery"

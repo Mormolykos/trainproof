@@ -5,10 +5,20 @@ def _convert_state_to_records(state) -> list[dict]:
     history = getattr(state, "log_history", [])
     records = []
     for entry in history:
-        if not isinstance(entry, dict) or "loss" not in entry:
+        if not isinstance(entry, dict):
+            continue
+        if "train_runtime" in entry:  # end-of-training summary, not a step
+            continue
+        # HF logs eval results as SEPARATE entries that carry eval_loss and no
+        # loss. Requiring "loss" here dropped every one of them, and eval_loss
+        # was not copied even when it shared an entry with loss -- so
+        # TP-OVERFIT could never reach its 4-eval minimum and was structurally
+        # unreachable from the callback, while the file path saw it fine. This
+        # now mirrors adapters.parse_hf_trainer_state.
+        if "loss" not in entry and "eval_loss" not in entry:
             continue
         record = {}
-        for k in ["loss", "grad_norm", "step"]:
+        for k in ["loss", "eval_loss", "grad_norm", "step"]:
             if k in entry and entry[k] is not None:
                 try:
                     record[k] = float(entry[k])

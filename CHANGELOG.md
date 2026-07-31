@@ -4,6 +4,88 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.12.0] — 2026-07-30 — the honest-verdict release
+
+No new diagnostic idea ships here. Every change closes a hole in a check that
+already existed: two silent false negatives, one misdiagnosis, and one claim of
+coverage the tool had not delivered.
+
+The audit that found them started from a simple question — what happens to a run
+whose loss is *exactly* zero? Every loss-shape check is guarded by `> 0` to avoid
+dividing by zero, so the answer was: all of them skip, the verdict stays PASS,
+and `TP-PASS` goes on to name loss-shape, divergence and dead-run as checks it
+had run. A run where every label was masked to `-100` — which learns nothing at
+all — passed clean and was told which three checks had cleared it.
+
+**All 38 golden snapshots are byte-identical and `EVIDENCE_MATRIX.md` is
+unchanged.** No existing verdict moved: no shipped fixture has an all-zero
+series, and the lowest loss anywhere in the gallery is 0.026.
+
+### Fixed
+- **`TP-ZERO-LOSS`** (FAIL): every finite loss is exactly 0.0. Cross-entropy
+  returns 0.0 when every target label is masked to `-100`, so the finding names
+  the collator's prompt masking and context-window truncation as the places to
+  look. Detected by exact equality, never a threshold — a very small loss is real
+  convergence, which is a different condition.
+- **`TP-ZERO-GRAD`** (FAIL): every finite gradient norm is exactly 0.0. This case
+  was already *caught*, as `TP-DEAD-RUN` — "loss never improved" — which sends
+  you hunting your data and learning rate for a day. It now names the actual
+  cause: a severed backward graph, usually reentrant gradient checkpointing over
+  frozen input embeddings with PEFT adapters deeper in the block.
+- **A single zero loss no longer disables divergence detection.** `TP-DIVERGE`
+  took its floor from `min()` over all losses, so one fully-masked batch anywhere
+  in a run drove `min_loss` to zero and the `min_loss > 0` guard switched the
+  check off for the *entire* run. The floor is now taken over nonzero losses.
+- **`TP-PASS` now reports only checks that actually executed.** The group list was
+  hardcoded, and grad-norm was registered on column *availability* while the
+  spike test itself sat behind `median_gn > 0`. Groups are now registered at the
+  point each check runs, every skip carries a reason, and reports expose this as
+  structured data under a new `checks` key. This is the deepest fix in the patch
+  and worth having with no new rules attached.
+- **`TP-CMP-UNCOMPARABLE`** (FAIL): `compare` no longer reports a zero-loss run as
+  favorable. Such a run has a loss floor of 0.0, which beats any baseline, so
+  neither `TP-FLOOR-RATIO` nor `TP-END-RATIO` can fire; `extract_metrics`
+  compounded it by substituting `0.0` for an undefined improvement, which kept
+  `TP-NEG-IMPROVE` quiet too. Against a baseline that had not itself improved,
+  nothing fired at all and the report read `TP-CMP-PASS`, "compares favorably".
+  Either side being degenerate now refuses the comparison instead.
+- **`TrainproofCallback` can finally see eval loss.** `_convert_state_to_records`
+  required `"loss"` in every entry, but HF logs eval results as *separate* entries
+  carrying `eval_loss` and no `loss` — and `eval_loss` was not copied even when it
+  shared an entry. `TP-OVERFIT` needs four eval points, so it was structurally
+  unreachable from the callback while `trainproof epoch` saw it correctly on the
+  same data. **This is the only change here that can alter a live verdict:** an
+  overfitting run that previously produced nothing from the callback will now
+  warn. A parity test asserts the callback and the file path emit identical
+  findings on `examples/gallery/overfit/`.
+- **`TP-CMP-ERROR`** (WARN): `doctor --baseline` swallowed a failed comparison with
+  `except Exception: pass` and printed the single-run verdict with no sign that
+  the comparison the user asked for never happened. `doctor` also now reports
+  logs it could not parse instead of dropping them from the report, where a
+  vanished log is indistinguishable from a passing one.
+- **Six drifted thresholds in `RULES.md`.** The published documentation disagreed
+  with the code on `TP-FLAT` (0.005 → 0.001), `TP-ZERO-LR` (100% → >=99%),
+  `TP-ZERO-LR-PARTIAL` (>20% → >10%), `TP-STEP-CLIFF` (1.5x of the run average →
+  3x the median of the first half), `TP-LOADER-BOUND` (>20% → >50%) and
+  `TP-IMPROVE-DEFICIT` (<50% → <25%). `TP-GPU-UTIL` said average where the code
+  takes a median, and `TP-NO-LOSS` documented only its `compare` meaning. The
+  rule-ID test compares ID *sets*, so threshold prose was never covered by it.
+
+### Changed
+- `parse_log_with_format_info` returns a fourth element: format-level metadata.
+  For HF logs this preserves `max_steps`, `num_train_epochs`, `best_metric`,
+  `best_global_step`, `best_model_checkpoint` and the interval settings — all of
+  which the adapter used to discard, leaving no way to check what a run was
+  configured to do against what it did. **Nothing reads it yet**; it is inert on
+  purpose so this patch cannot change a verdict. `parse_log_with_format` is
+  unchanged, and this function is not part of the stability contract.
+- Two tests were corrected because their expectations were wrong, not because new
+  code failed them. `test_convert_state_to_records` asserted that `eval_loss` was
+  stripped and eval-only entries dropped — it locked in the bug above.
+  `test_honest_tp_pass` matched the hardcoded group string literally; it now
+  asserts against the `checks` key, since `CONTRACTS.md` states message text is
+  prose and may be reworded in any release.
+
 ## [0.11.0] — 2026-07-30 — the evidence release
 
 No rule and no threshold changed. Every verdict that existed in v0.10 is

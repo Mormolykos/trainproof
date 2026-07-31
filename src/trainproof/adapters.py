@@ -28,16 +28,37 @@ def _resolve_key(col_name: str, overrides: dict[str, str] = None) -> str | None:
             return canon
     return None
 
-def parse_hf_trainer_state(text: str, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str]]:
+# trainer_state.json records run INTENT at the top level -- declared totals, and
+# the trainer's own record of its best checkpoint -- none of which appears in
+# log_history. All of it used to be discarded here, which left no way to check
+# what a run was configured to do against what it actually did.
+#
+# Preserved but NOT consumed: no rule reads this as of v0.11.1. It is inert on
+# purpose, so this patch cannot change a verdict.
+HF_STATE_META_KEYS = (
+    "max_steps",
+    "num_train_epochs",
+    "logging_steps",
+    "save_steps",
+    "eval_steps",
+    "train_batch_size",
+    "best_metric",
+    "best_global_step",
+    "best_model_checkpoint",
+)
+
+
+def parse_hf_trainer_state(text: str, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str], dict]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return [], {}
-        
+        return [], {}, {}
+
     history = data.get("log_history", [])
     records = []
     used_mapping = {}
-    
+    meta = {k: data[k] for k in HF_STATE_META_KEYS if k in data}
+
     for entry in history:
         if "train_runtime" in entry:
             continue
@@ -54,7 +75,7 @@ def parse_hf_trainer_state(text: str, mapping_overrides: dict[str, str] = None) 
                     pass
         if "loss" in record or "eval_loss" in record:
             records.append(record)
-    return records, used_mapping
+    return records, used_mapping, meta
 
 def parse_coqui_trainer_log(text: str, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str]]:
     text = ANSI_ESCAPE_PATTERN.sub('', text)
@@ -155,13 +176,18 @@ def parse_generic_log(text: str, is_csv: bool, mapping_overrides: dict[str, str]
                 pass
     return records, used_mapping
 
-def parse_log_with_format_info(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], str, dict[str, str]]:
+def parse_log_with_format_info(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], str, dict[str, str], dict]:
+    """Parse a log into records plus the format, column mapping, and run meta.
+
+    The fourth element is format-level metadata that is not per-step -- see
+    HF_STATE_META_KEYS. It is `{}` for every format that carries none.
+    """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Log file not found: {path}")
-        
+
     text = path.read_text(encoding="utf-8", errors="ignore").strip()
-    
+
     if fmt == "auto":
         if path.name == "trainer_state.json":
             fmt = "hf"
@@ -173,22 +199,22 @@ def parse_log_with_format_info(path: str | Path, fmt: str = "auto", mapping_over
             fmt = "csv"
         else:
             fmt = "jsonl"
-            
+
     if fmt == "hf":
-        records, mapping = parse_hf_trainer_state(text, mapping_overrides)
-        return records, fmt, mapping
+        records, mapping, meta = parse_hf_trainer_state(text, mapping_overrides)
+        return records, fmt, mapping, meta
     elif fmt == "coqui":
         records, mapping = parse_coqui_trainer_log(text, mapping_overrides)
-        return records, fmt, mapping
+        return records, fmt, mapping, {}
     elif fmt == "csv":
         records, mapping = parse_generic_log(text, True, mapping_overrides)
-        return records, fmt, mapping
+        return records, fmt, mapping, {}
     elif fmt == "jsonl":
         records, mapping = parse_generic_log(text, False, mapping_overrides)
-        return records, fmt, mapping
+        return records, fmt, mapping, {}
     else:
         raise ValueError(f"Unknown format: {fmt}")
 
 def parse_log_with_format(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> list[dict[str, float]]:
-    records, _, _ = parse_log_with_format_info(path, fmt, mapping_overrides)
+    records, *_ = parse_log_with_format_info(path, fmt, mapping_overrides)
     return records

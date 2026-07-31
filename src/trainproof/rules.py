@@ -72,6 +72,20 @@ MIN_POINTS_FOR_IMPROVEMENT_CHECK = 10
 OVERFIT_RATIO = 1.2
 OVERFIT_MIN_EVALS = 4
 
+# Degenerate-series detection (added in v0.11.1). An audit found that every
+# loss-shape check above is guarded by `> 0` to avoid dividing by zero — so a
+# loss curve that is EXACTLY zero on every step skipped all of them and the run
+# reached TP-PASS, which then went on to name loss-shape, divergence and
+# dead-run as checks it had "run". Same shape of bug for `median_gn > 0` and an
+# identically-zero gradient norm.
+#
+# A series that is identically zero is not a series to skip; it IS the
+# diagnosis. Detection is EXACT equality to 0.0, never a threshold: a very
+# small loss or gradient is a different condition (real convergence), and a
+# threshold here would fire on it. Exact zero is a structural signature, not a
+# magnitude.
+MIN_POINTS_FOR_DEGENERATE_CHECK = 5
+
 # -----------------
 # COMPARE SUBCOMMAND
 # -----------------

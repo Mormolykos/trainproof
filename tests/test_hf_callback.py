@@ -13,16 +13,24 @@ class MockControl:
         self.should_training_stop = False
 
 def test_convert_state_to_records():
+    # CHANGED in v0.11.1. This test previously asserted len(records) == 2 and
+    # records[0] == {"loss": 1.0, "step": 10.0, "lr": 0.01} -- i.e. it locked in
+    # the bug: eval_loss was stripped even when it shared an entry with loss, and
+    # eval-only entries were dropped entirely. HF logs eval results as separate
+    # entries, so TP-OVERFIT could never reach its 4-eval minimum from the
+    # callback. Corrected here because the old expectation was wrong, not because
+    # the new code failed it.
     state = MockState()
     state.log_history = [
         {"loss": 1.0, "step": 10, "learning_rate": 0.01, "eval_loss": 2.0},
-        {"eval_loss": 1.5, "step": 10}, 
+        {"eval_loss": 1.5, "step": 10},
         {"loss": 0.5, "step": 20, "grad_norm": 0.1}
     ]
     records = _convert_state_to_records(state)
-    assert len(records) == 2
-    assert records[0] == {"loss": 1.0, "step": 10.0, "lr": 0.01}
-    assert records[1] == {"loss": 0.5, "step": 20.0, "grad_norm": 0.1}
+    assert len(records) == 3
+    assert records[0] == {"loss": 1.0, "eval_loss": 2.0, "step": 10.0, "lr": 0.01}
+    assert records[1] == {"eval_loss": 1.5, "step": 10.0}
+    assert records[2] == {"loss": 0.5, "step": 20.0, "grad_norm": 0.1}
 
 def test_hf_callback_warn_policy():
     callback = TrainproofCallback(policy="warn", check_every=10, min_points=10)

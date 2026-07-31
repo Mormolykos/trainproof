@@ -1,0 +1,286 @@
+{
+  "project": "trainproof",
+  "version": "0.12.0",
+  "release_date": "2026-07-30",
+  "verified": {
+    "test_count": 166,
+    "test_command": "python -m pytest --collect-only -q",
+    "python_requires": ">=3.10",
+    "commands": [
+      {
+        "name": "data",
+        "purpose": "Dataset preflight for speech/TTS corpora."
+      },
+      {
+        "name": "tokenizer",
+        "purpose": "Tokenizer preflight."
+      },
+      {
+        "name": "epoch",
+        "purpose": "First-epoch verdict from training logs."
+      },
+      {
+        "name": "doctor",
+        "purpose": "Flagship zero-config autopsy of training logs. Exposed under the alias 'diagnose'."
+      },
+      {
+        "name": "compare",
+        "purpose": "Compare a run log against a baseline log."
+      },
+      {
+        "name": "watch",
+        "purpose": "Live guardian: poll a training log."
+      },
+      {
+        "name": "preflight",
+        "purpose": "Pre-flight linter for LLM fine-tuning datasets."
+      }
+    ],
+    "features_added": [
+      {
+        "claim": "TP-ZERO-LOSS (FAIL) detects a loss series that is exactly 0.0 on every finite step. Every loss-shape check was guarded by a '> 0' test to avoid dividing by zero, so such a run skipped TP-FLAT, TP-DIVERGE and TP-DEAD-RUN alike, kept a PASS verdict, and was told by TP-PASS that those three checks had run. Cross-entropy returns 0.0 when every target label is masked to -100.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "TP-ZERO-GRAD (FAIL) detects a gradient-norm series that is exactly 0.0 on every finite step, the log signature of a severed backward graph. This case was already caught, but as TP-DEAD-RUN ('loss never improved'), which points the reader at the data and the learning rate rather than at the graph.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "Both degenerate checks use exact equality to 0.0 rather than a threshold, because a very small loss or gradient is real convergence and a threshold would fire on it. Detection requires at least 5 finite points; below that the group is reported as skipped, never as passed.",
+        "evidence": "src/trainproof/rules.py:MIN_POINTS_FOR_DEGENERATE_CHECK"
+      },
+      {
+        "claim": "TP-DIVERGE now takes its floor over nonzero losses. It previously used min() over all losses, so a single 0.0 anywhere in a run drove the floor to zero and the 'min_loss > 0' guard disabled divergence detection for the entire run.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "TP-PASS now reports only checks that actually executed. The group list was a hardcoded literal, and the gradient group was registered on column availability while the spike test itself sat behind a 'median_gn > 0' guard. Groups are now registered at the point each check runs, and every skipped group carries a reason.",
+        "evidence": "src/trainproof/epoch.py:CHECK_GROUPS"
+      },
+      {
+        "claim": "Single-run reports carry a new 'checks' key: 'ran' as a sorted list of executed check groups, and 'skipped' as a map of group to reason. Every judging group appears in exactly one of the two, asserted across all shipped logs.",
+        "evidence": "tests/test_v0111_degenerate.py:test_every_check_group_is_accounted_for"
+      },
+      {
+        "claim": "TP-CMP-UNCOMPARABLE (FAIL) stops compare from reporting a zero-loss run as favorable. Such a run has a loss floor of 0.0, which beats any baseline, so neither TP-FLOOR-RATIO nor TP-END-RATIO can fire; extract_metrics compounded this by substituting 0.0 for an undefined improvement, which silenced TP-NEG-IMPROVE as well. Against a baseline that had not itself improved, nothing fired at all and the report read TP-CMP-PASS, 'compares favorably'.",
+        "evidence": "src/trainproof/compare.py"
+      },
+      {
+        "claim": "The HuggingFace TrainerCallback can now see eval loss. _convert_state_to_records required 'loss' in every entry, but HF logs eval results as separate entries carrying eval_loss and no loss, and eval_loss was not copied even when it shared an entry. TP-OVERFIT requires four eval points, so it was structurally unreachable from the callback while trainproof epoch judged the same data correctly. This is the only change in 0.12.0 that can alter a live verdict.",
+        "evidence": "src/trainproof/integrations/hf.py"
+      },
+      {
+        "claim": "A parity test asserts the callback path and the file path emit identical finding sets on the shipped overfit gallery run.",
+        "evidence": "tests/test_v0111_degenerate.py:test_callback_reaches_the_same_findings_as_the_file_path"
+      },
+      {
+        "claim": "TP-CMP-ERROR (WARN) replaces a silent 'except Exception: pass' in doctor --baseline, which printed the single-run verdict with no indication that the comparison the user asked for had failed. doctor also now reports logs it could not parse rather than dropping them from the report.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "The HuggingFace adapter preserves trainer_state top-level metadata: max_steps, num_train_epochs, logging_steps, save_steps, eval_steps, train_batch_size, best_metric, best_global_step and best_model_checkpoint. All of it was previously discarded. No rule consumes it at this version; it is inert so that this release cannot change a verdict through it.",
+        "evidence": "src/trainproof/adapters.py:HF_STATE_META_KEYS"
+      },
+      {
+        "claim": "Six threshold values in RULES.md disagreed with the code and were corrected: TP-FLAT (0.005 to 0.001), TP-ZERO-LR (100 percent to at least 99 percent), TP-ZERO-LR-PARTIAL (above 20 percent to above 10 percent), TP-STEP-CLIFF (1.5x the run average to 3x the median of the first half), TP-LOADER-BOUND (above 20 percent to above 50 percent) and TP-IMPROVE-DEFICIT (below 50 percent to below 25 percent). The rule-ID test compares ID sets, so threshold prose was never covered by it.",
+        "evidence": "RULES.md"
+      },
+      {
+        "claim": "The README doctor example showed output the tool had stopped emitting: 16 records where the log has 60, a PASS message that no longer exists, and no rule ID in a section stating that v0.8 added rule IDs to all text output. It now shows verbatim current output.",
+        "evidence": "README.md"
+      },
+      {
+        "claim": "61 distinct TP-* rule IDs exist in the source at this version, up from 57 in 0.11.0, and the set matches RULES.md in both directions.",
+        "evidence": "tests/test_contracts.py:test_rule_ids_and_rules_md_agree"
+      },
+      {
+        "claim": "No existing verdict changed. All 38 golden snapshots are byte-identical to 0.11.0 and EVIDENCE_MATRIX.md differs only in its version stamp. No shipped fixture contains an all-zero series, and the lowest loss anywhere in the gallery is 0.026.",
+        "evidence": "tests/golden/"
+      }
+    ],
+    "architecture_facts": [
+      {
+        "claim": "trainproof is a deterministic linter for ML training runs; its analysis path contains no model, inference or scoring component.",
+        "evidence": "pyproject.toml:description"
+      },
+      {
+        "claim": "Findings are identified by stable string rule IDs of the form TP-*; 61 distinct rule IDs are present in the source tree at this version.",
+        "evidence": "src/trainproof/rules.py"
+      },
+      {
+        "claim": "Input is a training log parsed into an ordered list of scalar metric records; every rule judges those records, not model weights, activations or gradients.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "Three log formats are parsed: HuggingFace trainer_state, Coqui trainer log, and a generic CSV/JSONL log, with automatic format detection and per-field mapping overrides. The parser also returns format-level metadata, which is empty for every format except HuggingFace.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "Ten judging check groups are tracked per single-run report: zero-loss, zero-grad, flat-loss, divergence, dead-run, grad-spike, lr, step-time, loader and overfit. Each is registered as ran or skipped at the point its check executes, and INFO-only observations are excluded because a missing one cannot imply a clean result.",
+        "evidence": "src/trainproof/epoch.py:CHECK_GROUPS"
+      },
+      {
+        "claim": "Exit code is derived from the verdict: 1 when the worst verdict is FAIL, 0 otherwise, and 2 when trainproof could not judge.",
+        "evidence": "src/trainproof/cli.py:fail_to_run"
+      },
+      {
+        "claim": "Runtime dependencies are numpy, soundfile and ttsproof; there is no ML framework, network client or telemetry dependency.",
+        "evidence": "pyproject.toml:dependencies"
+      },
+      {
+        "claim": "The console script and 'python -m trainproof' both call the same main(), so the two entry points cannot diverge on exit codes; a parametrised test asserts agreement on 0, 1 and 2.",
+        "evidence": "src/trainproof/__main__.py"
+      },
+      {
+        "claim": "The HuggingFace callback and the file-based epoch command feed the same rules engine, and a parity test asserts they produce identical findings on the same data.",
+        "evidence": "src/trainproof/integrations/hf.py"
+      }
+    ],
+    "limitations": [
+      {
+        "claim": "trainproof judges only what appears in a training log or configuration. It cannot observe model weights, activations, attention statistics or gradients, so failure modes visible only inside the training loop are out of scope.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "A PASS verdict is still possible when no check executed. A log carrying a loss column and nothing else, with fewer than five points, skips every check group and returns PASS. TP-PASS names all ten skips and their reasons, so the report does not overstate coverage, but 'nothing could be checked' shares a verdict with 'checked and clean'. Recorded as a known gap.",
+        "evidence": "ROADMAP.md"
+      },
+      {
+        "claim": "Partial zero-loss is not detected. TP-ZERO-LOSS requires every finite loss to be exactly 0.0, so a run where only some steps collapse to zero is not flagged as such, although a zero value no longer disables the divergence check. Recorded as a known gap.",
+        "evidence": "ROADMAP.md"
+      },
+      {
+        "claim": "A single run's loss curve cannot detect a corrupted dataset. The shipped bad_labels runs improve 62.5, 62.8 and 61.9 percent while the healthy baseline improves 14.7, 23.0 and 25.1 percent, and the single-run rules reach only WARN on them. Detecting that class of failure requires comparison against a known-good baseline.",
+        "evidence": "EVIDENCE_MATRIX.md"
+      },
+      {
+        "claim": "Comparison is not sufficient either: the overfit configuration is caught by the single-run rules in all three seeds and missed by comparison in all three. Neither mode subsumes the other.",
+        "evidence": "EVIDENCE_MATRIX.md"
+      },
+      {
+        "claim": "Log-format support is limited to HuggingFace trainer_state, Coqui trainer logs, and generic CSV/JSONL. There is no TensorBoard adapter at this version.",
+        "evidence": "src/trainproof/adapters.py"
+      },
+      {
+        "claim": "The shipped Coqui log carries no gradient norms, so every gradient rule is structurally blind on it and reports itself as skipped. It is also the only evidence in the repository from a trainer other than HuggingFace.",
+        "evidence": "examples/real_world/README.md"
+      },
+      {
+        "claim": "The preserved trainer_state metadata is not read by any rule at this version, so a run whose configured intent disagrees with what it executed is not yet detected.",
+        "evidence": "src/trainproof/adapters.py:HF_STATE_META_KEYS"
+      },
+      {
+        "claim": "trainproof reports; it never modifies the training run, the user's code, or the log, and writes nothing to disk unless asked via --html or --sarif.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "Exit code 2 is explicitly not a statement about the run. It means the tool could not judge, and CI that collapses all non-zero codes into failure will lose that distinction.",
+        "evidence": "CONTRACTS.md"
+      },
+      {
+        "claim": "The 18-run gallery is one model family: Qwen2.5-3B-Instruct QLoRA on a single dataset. Breadth of evidence across training stacks remains limited at this version.",
+        "evidence": "examples/gallery/README.md"
+      },
+      {
+        "claim": "This is a pre-1.0 release. New rule IDs and new optional report keys may appear in a minor release, which is why consumers must tolerate unknown ones; the breaking-change policy is stated in CONTRACTS.md.",
+        "evidence": "CONTRACTS.md"
+      }
+    ]
+  },
+  "golden_qa": [
+    {
+      "question": "What changed in version 0.12.0?",
+      "answer": "0.12.0 introduces no new diagnostic idea. Every change closes a hole in a check that already existed: two silent false negatives, one misdiagnosis, and one claim of coverage the tool had not delivered. A run whose loss was exactly 0.0 on every step skipped every loss-shape check, because each was guarded by a '> 0' test to avoid dividing by zero, and reached a PASS verdict whose message then named those same checks as having run. TP-ZERO-LOSS and TP-ZERO-GRAD now name those two degenerate series and their usual causes: all target labels masked to -100, and a severed backward graph. TP-PASS reports only checks that actually executed, with a reason for every skip, exposed as a structured 'checks' key. compare refuses to judge a run with no usable loss scale via TP-CMP-UNCOMPARABLE, because a zero loss floor beats any baseline and used to read as 'compares favorably'. The HuggingFace callback can finally see eval loss, which had made TP-OVERFIT structurally unreachable there. Six threshold values in RULES.md that disagreed with the code were corrected. No existing verdict changed: all 38 golden snapshots are byte-identical to 0.11.0.",
+      "evidence": [
+        "CHANGELOG.md#0.12.0",
+        "src/trainproof/epoch.py",
+        "src/trainproof/compare.py",
+        "src/trainproof/integrations/hf.py"
+      ]
+    },
+    {
+      "question": "What does a trainproof PASS verdict actually promise?",
+      "answer": "That the checks it names as having run found nothing, and nothing more. A PASS lists the check groups that executed and every group that did not, each with its reason: no data, too few points, or a series too degenerate to measure. Reports carry this as structured data under the 'checks' key, with 'ran' as a sorted list and 'skipped' as a map of group to reason; every judging group appears in exactly one of the two. For example, judging the shipped healthy run produces 'Ran: dead-run, divergence, flat-loss, grad-spike, lr, zero-grad, zero-loss. Skipped: loader (no loader_time/step_time pair in the log); overfit (no eval_loss in the log - this run has no generalisation signal at all); step-time (no step_time column in the log).' That log has no evaluation signal at all, so a reader must not conclude anything about generalisation from its PASS. A skipped check is not a passed check. Before 0.12.0 the group list was hardcoded, so a log whose checks had all been skipped by their own guards still produced a PASS naming those checks as having run.",
+      "evidence": [
+        "src/trainproof/epoch.py:CHECK_GROUPS",
+        "RULES.md",
+        "CONTRACTS.md",
+        "tests/test_v0111_degenerate.py:test_every_check_group_is_accounted_for"
+      ]
+    },
+    {
+      "question": "What does trainproof detect?",
+      "answer": "trainproof detects failure conditions in ML training runs by judging the scalar metric records parsed from a training log. Findings are identified by stable TP-* rule IDs, of which 61 distinct IDs exist in the source at this version, up from 57 in 0.11.0. It judges logs and configuration only: model weights, activations, attention statistics and gradients are not observed, so failure modes visible only inside the training loop are out of scope. Detection covers NaN and infinity, divergence, dead runs, flat curves, gradient spikes, zero and partially-zero learning rates, degenerate loss and gradient series, overfitting against an eval signal, step-time cliffs and dataloader stalls, plus ratio rules against a known-good baseline.",
+      "evidence": [
+        "src/trainproof/rules.py",
+        "RULES.md",
+        "src/trainproof/adapters.py:parse_log_with_format_info"
+      ]
+    },
+    {
+      "question": "What problem does trainproof solve?",
+      "answer": "It separates 'your run failed' from 'the tool could not judge your run', and as of 0.12.0 it extends that same distinction inside a passing verdict. Exit 1 is reserved for a FAIL verdict about the run; exit 2 means trainproof could not judge, covering unreadable logs, missing files, no parsed records and missing optional dependencies. An unreadable log reports worst_verdict null with a populated error key rather than synthesising a FAIL. Within a report, a check that could not run is named as skipped with its reason rather than counted as clean, so absence of evidence is never presented as evidence of a successful check.",
+      "evidence": [
+        "src/trainproof/cli.py:fail_to_run",
+        "src/trainproof/epoch.py",
+        "CONTRACTS.md"
+      ]
+    },
+    {
+      "question": "Can a single training run's loss curve detect a corrupted dataset?",
+      "answer": "No, and trainproof states this rather than implying otherwise. In the shipped bad_labels configuration the labels are shuffled per sequence, so the task cannot be learned at all, yet trainproof measures its improvement at 62.5, 62.8 and 61.9 percent across seeds 42, 43 and 44, while the healthy baseline improves only 14.7, 23.0 and 25.1 percent. On its own curve the run that cannot learn looks like the better training run, because it is fitting the marginal token statistics of noise. What identifies it is relative: a loss floor roughly six times the same-seed baseline's, which requires a baseline to see. That is why trainproof compare exists, and it catches bad_labels in three seeds out of three. The reverse also holds: the overfit configuration is caught by the single-run rules in all three seeds and missed by comparison in all three, so neither mode is sufficient alone.",
+      "evidence": [
+        "EVIDENCE_MATRIX.md",
+        "examples/gallery/bad_labels/",
+        "src/trainproof/compare.py"
+      ]
+    },
+    {
+      "question": "What are trainproof's limitations?",
+      "answer": "It judges only what appears in a training log or configuration, so failures visible only inside the training loop are out of scope. A PASS verdict is still possible when no check executed at all, on a log carrying a loss column and fewer than five points; the report names every skip, but 'nothing could be checked' shares a verdict with 'checked and clean'. Partial zero-loss, where only some steps collapse to zero, is not detected. A single run's loss curve cannot detect a corrupted dataset, and comparison cannot detect overfitting, so neither mode subsumes the other. Log-format support is limited to HuggingFace trainer_state, Coqui trainer logs and generic CSV/JSONL, with no TensorBoard adapter. The shipped Coqui log carries no gradient norms, so gradient rules are blind on it and say so. Preserved trainer_state metadata is not yet read by any rule, so configured intent is not yet checked against executed reality. Exit code 2 is not a statement about the run. This is a pre-1.0 release.",
+      "evidence": [
+        "ROADMAP.md",
+        "src/trainproof/adapters.py",
+        "CONTRACTS.md",
+        "EVIDENCE_MATRIX.md"
+      ]
+    },
+    {
+      "question": "Does trainproof require a GPU, an ML framework, or specific hardware?",
+      "answer": "No. The analysis path contains no torch, CUDA or device code; trainproof reads the JSON or text log that a trainer has already written. Runtime dependencies are numpy, soundfile and ttsproof, and the latter two exist for the speech-corpus data subcommand only: a training-log check imports none of them. The shipped gallery was produced on an RTX 5080, which is where the logs came from rather than a requirement for judging them. Pointed at a log from an unrelated project, trainproof reports which checks it ran and which it skipped, with a reason for each.",
+      "evidence": [
+        "pyproject.toml:dependencies",
+        "src/trainproof/epoch.py",
+        "examples/gallery/README.md"
+      ]
+    },
+    {
+      "question": "How is trainproof tested?",
+      "answer": "166 tests are collected at this version via 'python -m pytest --collect-only -q', up from 116 in 0.11.0. Snapshots in tests/golden/ pin the verdict and the complete rule-ID set for all nineteen shipped logs and their baseline comparisons, 38 snapshots in total, so both a rule that stops firing and a rule that starts firing spuriously fail the build. All 38 are byte-identical to 0.11.0, which is what makes 'no verdict changed' a checkable claim. A coverage guard asserts every gallery folder and every nested seed folder has a snapshot. A further test regenerates EVIDENCE_MATRIX.md and fails if the committed file differs. Others enforce that rule IDs in source and RULES.md match in both directions, that the two declared version strings agree, that the console script and 'python -m trainproof' return identical exit codes, that every check group is accounted for as either ran or skipped on every shipped log, and that the HuggingFace callback and the file path emit identical findings on the same data.",
+      "evidence": [
+        "python -m pytest --collect-only -q",
+        "tests/test_golden_gallery.py",
+        "tests/test_contracts.py",
+        "tests/test_v0111_degenerate.py"
+      ]
+    },
+    {
+      "question": "What commands does trainproof expose?",
+      "answer": "Seven subcommands: data (dataset preflight for speech/TTS corpora), tokenizer (tokenizer preflight), epoch (first-epoch verdict from training logs), doctor (flagship zero-config autopsy of training logs, aliased as diagnose), compare (compare a run log against a baseline log), watch (live guardian polling a training log), and preflight (pre-flight linter for LLM fine-tuning datasets). Both the trainproof console script and 'python -m trainproof' invoke the same entry point and agree on every exit code.",
+      "evidence": [
+        "src/trainproof/cli.py:main",
+        "src/trainproof/__main__.py",
+        "tests/test_contracts.py:test_module_entry_point_matches_the_exit_code_contract"
+      ]
+    },
+    {
+      "question": "What Python versions does trainproof support?",
+      "answer": "Python 3.10 and newer.",
+      "evidence": [
+        "pyproject.toml:requires-python"
+      ]
+    }
+  ],
+  "generated_by": "hand-written to the release.ps1 schema before release; validated by release.ps1 step 7 against the shipped wheel",
+  "generated_at": "2026-07-30T16:29:02Z"
+}

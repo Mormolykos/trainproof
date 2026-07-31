@@ -53,6 +53,14 @@ Every report has `verdict` and `findings`. Every finding has `id`, `level`,
 one log, or `compare` for rules judging it against a baseline — one flat array,
 so a consumer never special-cases by command.
 
+Single-run reports also carry **`checks`** (added in 0.12.0): `ran`, a sorted
+list of the check groups that executed, and `skipped`, a map of group → reason.
+Every judging group appears in exactly one of the two. This is the machine-
+readable form of what `TP-PASS` states in prose, and it is the supported way to
+answer "was this actually checked?" — a skipped check is not a passed check.
+INFO-only observations are not accounted for in `checks`, because a missing one
+cannot imply a clean result.
+
 When `error` is non-null, trainproof could not judge: `reports` is empty,
 `worst_verdict` is `null`, and the exit code is `2`.
 

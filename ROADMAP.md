@@ -130,6 +130,40 @@ level, full lifecycle) rather than text-only.
 
 ---
 
+## Known gaps — found during v0.12.0, deliberately not fixed there
+
+Found by the audit that produced v0.12.0 and left alone on purpose: each one
+either changes semantics that deserve their own design pass, or is unrelated to
+the correctness work and would have polluted its diff. Recorded here so they are
+disclosed rather than forgotten.
+
+1. **A PASS verdict is still possible when no check executed.** A log carrying a
+   loss column and nothing else, with fewer than five points, skips every group
+   in `CHECK_GROUPS` and returns PASS. `TP-PASS` does name all ten skips and
+   their reasons, so the report does not lie — but "nothing could be checked"
+   arguably deserves its own verdict rather than sharing one with "checked and
+   clean." Changing it touches verdict semantics and the exit-code contract, so
+   it needs designing, not patching.
+2. **Partial zero-loss is not detected.** `TP-ZERO-LOSS` requires *every* finite
+   loss to be exactly 0.0. A run where only some steps collapse to zero — the
+   more common shape, since truncation and masking bugs often hit a subset of
+   samples — is not flagged as such. The `TP-ZERO-LR` / `TP-ZERO-LR-PARTIAL`
+   pair is the precedent for how this should look. Needs a gallery fixture
+   first, per the decision rule above.
+3. **`cli.py` still has one `try/except/pass` in `doctor`'s candidate
+   discovery.** The handler that swallowed a failed baseline comparison was
+   fixed in v0.12.0 (`TP-CMP-ERROR`); this second one silently drops a file
+   during the directory walk, before any log is judged. Lower impact — an
+   undiscovered file never enters the report at all — but it is the same class.
+4. **Repo-wide lint is unconfigured.** There is no `[tool.ruff]` section in
+   `pyproject.toml` and ruff is not a dependency, so lint has never been part of
+   the gate. Running it with an inherited config reports ~79 findings, almost
+   all import ordering, unused unpacked variables, and the blind-except pattern
+   used throughout the CLI. Adopting a lint gate is a decision to take
+   deliberately, on its own, and never inside a correctness release.
+
+---
+
 ## Never (locked — each already refused at least once)
 
 - **No ML judging ML.** No model scores a run.

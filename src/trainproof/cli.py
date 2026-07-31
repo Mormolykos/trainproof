@@ -167,7 +167,7 @@ def _run():
                 if not p.is_file(): continue
                 if p.name == "trainer_state.json" or p.suffix in (".jsonl", ".csv", ".log", ".txt"):
                     try:
-                        records, _, _ = parse_log_with_format_info(p, fmt="auto", mapping_overrides=mapping_overrides)
+                        records, *_ = parse_log_with_format_info(p, fmt="auto", mapping_overrides=mapping_overrides)
                         if len(records) >= 3:
                             candidates.append(p)
                     except Exception:
@@ -186,16 +186,21 @@ def _run():
                 candidates = candidates[:20]
                 
         results = []
+        unreadable = []
         from .epoch import check_records
         for p in candidates:
             fmt = args.format if path.is_file() else "auto"
             try:
-                records, fmt_str, used_mapping = parse_log_with_format_info(p, fmt, mapping_overrides)
+                records, fmt_str, used_mapping, _meta = parse_log_with_format_info(p, fmt, mapping_overrides)
             except Exception:
                 records = []
                 fmt_str = "unknown"
                 used_mapping = {}
-            if not records: continue
+            if not records:
+                # dropped in silence before 0.11.1: a log that disappears from
+                # the report is indistinguishable from a log that passed
+                unreadable.append(p)
+                continue
             
             step_range = f"{records[0].get('step', 0)}..{records[-1].get('step', len(records)-1)}"
             
@@ -217,10 +222,27 @@ def _run():
                         report["verdict"] = "FAIL"
                     elif cmp["verdict"] == "WARN" and report["verdict"] == "PASS":
                         report["verdict"] = "WARN"
-                except Exception:
-                    pass
+                except Exception as e:
+                    # never swallowed: the report would otherwise show a
+                    # single-run verdict with no sign that the comparison the
+                    # user explicitly asked for never happened
+                    report["findings"] += tag_source([{
+                        "id": "TP-CMP-ERROR",
+                        "level": "WARN",
+                        "message": "The baseline comparison could not be run - this report judges the run on its own only.",
+                        "evidence": f"{args.baseline}: {e}",
+                    }], "compare")
+                    if report["verdict"] == "PASS":
+                        report["verdict"] = "WARN"
             results.append(report)
             
+        if unreadable and not is_json:
+            print(
+                f"Note: {len(unreadable)} log(s) could not be parsed and were NOT judged: "
+                + ", ".join(p.name for p in unreadable)
+            )
+            print()
+
         _order = {"FAIL": 0, "WARN": 1, "PASS": 2}
         results.sort(key=lambda r: _order.get(r["verdict"], 3))
 
