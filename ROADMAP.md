@@ -137,13 +137,24 @@ either changes semantics that deserve their own design pass, or is unrelated to
 the correctness work and would have polluted its diff. Recorded here so they are
 disclosed rather than forgotten.
 
-1. **A PASS verdict is still possible when no check executed.** A log carrying a
-   loss column and nothing else, with fewer than five points, skips every group
-   in `CHECK_GROUPS` and returns PASS. `TP-PASS` does name all ten skips and
-   their reasons, so the report does not lie — but "nothing could be checked"
-   arguably deserves its own verdict rather than sharing one with "checked and
-   clean." Changing it touches verdict semantics and the exit-code contract, so
-   it needs designing, not patching.
+1. ~~**A PASS verdict is still possible when no check executed.**~~ **FIXED in
+   v0.13.0** by the `NOT-CHECKED` verdict, which exits 2.
+
+   The repro stated here was wrong, and is corrected for the record: a log
+   carrying a loss column and fewer than five points does **not** skip every
+   group. `divergence` and `flat-loss` are guarded by loss *positivity*, not by
+   point count, so both execute and the resulting PASS is honest. Zero groups
+   execute only when there are fewer than five finite loss points **and** the
+   mean loss is non-positive — a short run whose loss is all zeros — with no
+   gradient-norm, learning-rate, step-time or eval_loss column. That is the
+   sub-threshold companion to `TP-ZERO-LOSS`, and it is a more valuable catch
+   than the thin-log case this entry originally described.
+
+   Recorded because the entry asserted a behaviour the code did not exhibit, and
+   v0.13.0's rule prose was written from it before anyone ran the repro. Same
+   class as the six drifted `RULES.md` thresholds found in v0.12.0: documentation
+   describing a trigger condition needs either generation from the code or a test
+   that executes the documented repro and asserts the documented outcome.
 2. **Partial zero-loss is not detected.** `TP-ZERO-LOSS` requires *every* finite
    loss to be exactly 0.0. A run where only some steps collapse to zero — the
    more common shape, since truncation and masking bugs often hit a subset of

@@ -1,0 +1,274 @@
+{
+  "project": "trainproof",
+  "version": "0.13.0",
+  "release_date": "2026-07-31",
+  "verified": {
+    "test_count": 179,
+    "test_command": "python -m pytest --collect-only -q",
+    "python_requires": ">=3.10",
+    "commands": [
+      {
+        "name": "data",
+        "purpose": "Dataset preflight for speech/TTS corpora."
+      },
+      {
+        "name": "tokenizer",
+        "purpose": "Tokenizer preflight."
+      },
+      {
+        "name": "epoch",
+        "purpose": "First-epoch verdict from training logs."
+      },
+      {
+        "name": "doctor",
+        "purpose": "Flagship zero-config autopsy of training logs. Exposed under the alias 'diagnose'."
+      },
+      {
+        "name": "compare",
+        "purpose": "Compare a run log against a baseline log."
+      },
+      {
+        "name": "watch",
+        "purpose": "Live guardian: poll a training log."
+      },
+      {
+        "name": "preflight",
+        "purpose": "Pre-flight linter for LLM fine-tuning datasets."
+      }
+    ],
+    "features_added": [
+      {
+        "claim": "NOT-CHECKED is a third verdict, distinct from PASS, and fires on zero check groups executed. In practice that requires fewer than five finite loss points AND a non-positive mean loss - a short run whose loss is all zeros - with no gradient-norm, learning-rate, step-time or eval_loss column. A short log with positive losses is NOT NOT-CHECKED: divergence and flat-loss are guarded by loss positivity rather than point count, so they execute and the run correctly passes. Before 0.13.0 such a run returned PASS with exit 0, so 'checked and clean' and 'nothing could be checked' shared one verdict and one exit code.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "TP-NOT-CHECKED (NOT-CHECKED) names how many check groups were considered, states that zero executed, and carries the skip reason for every one of them as evidence. On a four-point all-zero-loss log it reports '10 check groups considered, 0 executed' and lists all ten reasons.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "Severity and exit code are computed on two separate axes. Severity orders FAIL > WARN > NOT-CHECKED > PASS and drives worst_verdict and doctor's triage sort. Exit code is 1 if any FAIL, else 2 if anything could not be judged (NOT-CHECKED, TP-NO-RECORDS, TP-CMP-ERROR), else 0. WARN therefore outranks NOT-CHECKED in severity while still exiting 0; this is intentional and matches the pre-existing exit-code contract.",
+        "evidence": "src/trainproof/cli.py:_VERDICT_SEVERITY"
+      },
+      {
+        "claim": "An unrecognised or missing verdict normalises to NOT-CHECKED, so the verdict enum stays closed and such a report exits 2. Previously an unknown verdict ranked below PASS in severity and matched neither exit-code branch, so a report trainproof could not classify was reported to CI as clean.",
+        "evidence": "src/trainproof/cli.py:_normalize_verdict"
+      },
+      {
+        "claim": "compare refuses a NOT-CHECKED run through the existing TP-CMP-UNCOMPARABLE path rather than comparing against a run nothing was measured on.",
+        "evidence": "src/trainproof/compare.py"
+      },
+      {
+        "claim": "All four output surfaces render the new verdict consistently: console prints [NOT-CHECKED] from an explicit branch, the doctor autopsy counts line gained a fourth category, SARIF maps NOT-CHECKED to 'warning' so it cannot render in a pull request identically to a passing check, and the HTML report carries .level-NOT-CHECKED and .stat.not-checked styling.",
+        "evidence": "src/trainproof/report.py"
+      }
+    ],
+    "architecture_facts": [
+      {
+        "claim": "JSON schema_version moves 2 to 3. The verdict enum gains one member, NOT-CHECKED, which is a breaking change for any consumer that switches on verdict. Under SemVer before 1.0 a breaking change bumps the minor version, which is why a one-day correctness release is 0.13.0 and not 0.12.1.",
+        "evidence": "CONTRACTS.md"
+      },
+      {
+        "claim": "62 distinct TP-* rule IDs exist in the source at this version, up from 61 in 0.12.0; the single addition is TP-NOT-CHECKED. The set matches RULES.md in both directions, asserted by a drift test.",
+        "evidence": "tests/test_contracts.py:test_rule_ids_and_rules_md_agree"
+      },
+      {
+        "claim": "The NOT-CHECKED trigger is exact, not a threshold: the count of executed check groups is zero. If one or more groups executed and nothing fired, the verdict is PASS and TP-PASS names every group that ran and every group that was skipped with its reason. There is no partial or intermediate verdict.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "trainproof exposes seven commands. 'diagnose' is an alias of 'doctor' and is counted as one command with it, not as an eighth.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "The HuggingFace TrainerCallback acts only on a FAIL verdict, so NOT-CHECKED does not surface during a run's warm-up steps when too few points exist for any group to execute.",
+        "evidence": "src/trainproof/integrations/hf.py"
+      }
+    ],
+    "limitations": [
+      {
+        "claim": "trainproof judges only what appears in a training log or configuration. It cannot observe model weights, activations, attention statistics or gradients, so failure modes visible only inside the training loop remain out of scope in 0.13.0.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "NOT-CHECKED reports that nothing could be measured; it never explains why a log is thin and never repairs it. A run that produces almost no telemetry yields almost no verdict, and that is the honest outcome rather than a failure of the run.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "A shuffled-labels run reduced its loss 62 percent by learning the marginal token distribution and is indistinguishable from real learning on its own loss curve. No single-run, loss-only rule catches this class; its signature is relative, which is why compare exists. 0.13.0 does not change this.",
+        "evidence": "examples/gallery/bad_labels"
+      },
+      {
+        "claim": "Partial zero-loss is still not detected. TP-ZERO-LOSS requires every finite loss to be exactly 0.0; a run where only some steps collapse to zero is not flagged as such. Disclosed in ROADMAP.md rather than fixed, because the decision rule requires a real gallery fixture before a rule ships.",
+        "evidence": "ROADMAP.md"
+      }
+    ]
+  },
+  "golden_qa": [
+    {
+      "question": "What changed in version 0.13.0?",
+      "answer": "0.13.0 adds a third verdict, NOT-CHECKED, and adds no new detection. Before it, a run where no check group could execute returned PASS with exit 0, so 'checked and clean' and 'nothing could be checked' were indistinguishable to the only surface CI reads. NOT-CHECKED fires on zero check groups executed. In practice that requires fewer than five finite loss points AND a non-positive mean loss - a short run whose loss is all zeros - with no gradient-norm, learning-rate, step-time or eval_loss column. A short log with positive losses is NOT NOT-CHECKED: divergence and flat-loss are guarded by loss positivity rather than point count, so they execute and the run correctly passes. It exits 2, the code already reserved for 'trainproof could not judge'. Severity and exit code became two separate axes: severity orders FAIL > WARN > NOT-CHECKED > PASS, while the exit code is 1 for any FAIL, else 2 for anything unjudged, else 0. An unrecognised or missing verdict now normalises to NOT-CHECKED so the enum stays closed and such a report exits 2 instead of being reported to CI as clean. All four output surfaces were updated together: console, the doctor counts line, SARIF and the HTML report. No existing verdict moved: 166 to 179 tests, and all 38 golden snapshots are byte-identical.",
+      "evidence": [
+        "CHANGELOG.md#0.13.0",
+        "src/trainproof/epoch.py",
+        "src/trainproof/cli.py",
+        "CONTRACTS.md"
+      ]
+    },
+    {
+      "question": "What does a NOT-CHECKED verdict mean?",
+      "answer": "That trainproof examined the log and no check group could execute, so it has nothing to say about the run. It is not a pass, not a failure, and not a judgement about the training. The finding names how many groups were considered, states that zero executed, and carries the skip reason for each as evidence, so the report says exactly what could not be measured and why. It exits 2, the same code used for an unreadable log or a missing optional dependency.",
+      "evidence": [
+        "src/trainproof/epoch.py",
+        "CONTRACTS.md",
+        "RULES.md"
+      ]
+    },
+    {
+      "question": "What kind of run actually produces a NOT-CHECKED verdict?",
+      "answer": "A short run whose loss is all zeros: fewer than five finite loss points and a non-positive mean loss, with no gradient-norm, learning-rate, step-time or eval_loss column. That is the sub-threshold companion to TP-ZERO-LOSS, which needs five points before it can call an all-zero series degenerate. A short log with positive losses is not NOT-CHECKED: divergence and flat-loss are guarded by loss positivity rather than by point count, so they execute and such a run correctly passes.",
+      "evidence": [
+        "src/trainproof/epoch.py",
+        "RULES.md",
+        "tests/test_v0111_degenerate.py"
+      ]
+    },
+    {
+      "question": "Why is NOT-CHECKED a separate verdict rather than a kind of PASS?",
+      "answer": "Because absence of evidence is not evidence of a passing run, and the exit code is the only thing an automated pipeline reads. A PASS that means 'nothing could be checked' tells CI a run is clean when trainproof has measured nothing at all. The distinction already existed inside a report - v0.12.0 made TP-PASS name every skipped group and its reason - but it did not reach the verdict or the exit code, which is where a build system makes its decision. 0.13.0 carries it all the way out.",
+      "evidence": [
+        "src/trainproof/epoch.py",
+        "CONTRACTS.md"
+      ]
+    },
+    {
+      "question": "Is a run with only a few check groups executed reported as NOT-CHECKED?",
+      "answer": "No. The trigger is exact: zero executed groups. If one or more groups executed and nothing fired, the verdict is PASS, and TP-PASS names every group that ran and every group that was skipped with its reason. There is no partial or intermediate verdict, because a threshold on how much coverage counts as 'enough' would be a judgement call rather than a deterministic fact.",
+      "evidence": [
+        "src/trainproof/epoch.py",
+        "RULES.md"
+      ]
+    },
+    {
+      "question": "Why is a one-day correctness release a minor version bump rather than a patch?",
+      "answer": "Because the verdict enum gained a member, which is a breaking change for any consumer that switches on verdict, and the JSON schema_version moved 2 to 3 to say so. Under SemVer before 1.0, a breaking change bumps the minor version. Calling it 0.12.1 would have understated a contract change a CI integration can observe.",
+      "evidence": [
+        "CONTRACTS.md",
+        "CHANGELOG.md#0.13.0"
+      ]
+    },
+    {
+      "question": "What happens if trainproof encounters a verdict it does not recognise?",
+      "answer": "It normalises to NOT-CHECKED and the report exits 2. Before 0.13.0 an unrecognised or missing verdict ranked below PASS in the severity table and matched neither branch of the exit-code logic, so a report trainproof could not classify was silently reported to CI as clean, and worst_verdict could carry a value outside the declared enum. Normalising at ingestion keeps the enum closed and routes the unknown case to the same exit code as every other 'could not judge' condition.",
+      "evidence": [
+        "src/trainproof/cli.py:_normalize_verdict",
+        "CONTRACTS.md"
+      ]
+    },
+    {
+      "question": "Did any existing verdict change in 0.13.0?",
+      "answer": "No. All 38 golden snapshots are byte-identical, because no shipped fixture has zero executed check groups. The change adds a verdict for a case none of the archived runs exhibit; every gallery run and the real XTTS log are judged exactly as in 0.12.0. EVIDENCE_MATRIX.md differs only in its version stamp. The release is a correctness and contract change, not a detection change, and any claim that 0.13.0 detects something new is wrong.",
+      "evidence": [
+        "tests/golden/",
+        "EVIDENCE_MATRIX.md",
+        "CHANGELOG.md#0.13.0"
+      ]
+    },
+    {
+      "question": "How does NOT-CHECKED appear in CI and in a GitHub pull request?",
+      "answer": "The process exits 2, distinct from 1 for a FAIL verdict and 0 for a clean run. In SARIF output the finding maps to level 'warning' rather than 'note', specifically so a check that could not run does not render in a pull request identically to a check that ran and passed. The console prints an explicit [NOT-CHECKED] line, the doctor autopsy counts line carries a fourth category, and the HTML report styles it distinctly from pass, warn and fail.",
+      "evidence": [
+        "src/trainproof/sarif.py",
+        "src/trainproof/report.py",
+        "src/trainproof/cli.py"
+      ]
+    },
+    {
+      "question": "Does the live training callback emit NOT-CHECKED during warm-up?",
+      "answer": "No. The HuggingFace TrainerCallback acts only on a FAIL verdict, so the early steps of a run - where too few points exist for any check group to execute - produce no console output. NOT-CHECKED is a verdict about a log being judged, not a running commentary on a run that has not yet produced enough telemetry.",
+      "evidence": [
+        "src/trainproof/integrations/hf.py"
+      ]
+    },
+    {
+      "question": "What does trainproof detect?",
+      "answer": "Deterministic pathologies in training telemetry: divergence, dead runs that never improved, NaN losses, gradient spikes, flat loss, zero and partially-zero learning rates, zero-loss and zero-gradient degeneracy, overfitting from the eval curve, step-time stalls and throughput cliffs, and dataloader-bound runs. Before training it checks datasets and tokenizers: missing or unreadable audio, silence, clipping, inconsistent sample rates and channels, duplicates, empty transcripts, mixed scripts, out-of-vocabulary rates, pad-equals-eos, missing pad or eos tokens and context overflow. Every finding carries a stable TP-* id and the numbers that triggered it.",
+      "evidence": [
+        "RULES.md",
+        "src/trainproof/epoch.py",
+        "src/trainproof/preflight.py"
+      ]
+    },
+    {
+      "question": "What problem does trainproof solve?",
+      "answer": "It separates 'your run failed' from 'trainproof could not judge your run', and as of 0.13.0 that distinction reaches the verdict and the exit code rather than living only inside the report text. Exit 1 is reserved for a FAIL verdict about the run; exit 2 means trainproof could not judge, covering unreadable logs, missing files, no parsed records, missing optional dependencies, an unrecognised verdict, and now a run where no check could execute. Within a report, a check that could not run is named as skipped with its reason rather than counted as clean, so absence of evidence is never presented as evidence of a successful check.",
+      "evidence": [
+        "src/trainproof/cli.py",
+        "src/trainproof/epoch.py",
+        "CONTRACTS.md"
+      ]
+    },
+    {
+      "question": "Can a single training run's loss curve detect a corrupted dataset?",
+      "answer": "No, and trainproof documents this rather than hiding it. A run trained on shuffled labels reduced its loss 62 percent by learning the marginal token distribution, which on its own curve is indistinguishable from real learning. The signature of that failure is relative, not absolute, which is why the compare command exists: judged against a known-good baseline the same run is caught in three seeds out of three. The honest answer is that loss-curve-only linting cannot catch this class alone.",
+      "evidence": [
+        "examples/gallery/bad_labels",
+        "EVIDENCE_MATRIX.md",
+        "src/trainproof/compare.py"
+      ]
+    },
+    {
+      "question": "What evidence ships with trainproof, and has it been validated against a real failure rather than only deliberate sabotage?",
+      "answer": "Both. Eighteen fault-injected runs ship as six configurations at three seeds each, with the rule IDs that fired in every cell recorded in EVIDENCE_MATRIX.md, which is generated from the logs rather than hand-written. Alongside them ships examples/real_world/xtts_diverged, a 9.8-hour Coqui XTTS v2 fine-tune that diverged on its own rather than by injection. The log's own bookkeeping corroborates the verdict independently: trainproof puts the loss minimum at step 48,350, Coqui's last BEST MODEL line is best_model_49880.pth, and the last checkpoint written is checkpoint_70000.pth, so roughly 23,000 steps ran after the best weights already existed. One local filesystem prefix is replaced with <TTS> in 14 lines; no number, timestamp or step was altered, and this is disclosed rather than done quietly.",
+      "evidence": [
+        "examples/real_world/xtts_diverged",
+        "EVIDENCE_MATRIX.md",
+        "CHANGELOG.md#0.11.0"
+      ]
+    },
+    {
+      "question": "What are trainproof's limitations?",
+      "answer": "It judges only what appears in a training log or configuration, so it cannot observe weights, activations, attention statistics or gradients, and failure modes visible only inside the training loop are out of scope. A shuffled-labels run is indistinguishable from real learning on its own curve, which is why compare exists. Partial zero-loss - where only some steps collapse to zero rather than all of them - is still not detected and is disclosed in ROADMAP.md rather than fixed, because the decision rule requires a real gallery fixture before a rule ships. NOT-CHECKED reports that nothing could be measured; it does not explain why a log is thin or repair it. trainproof never uses a model to judge a run, emits no confidence scores or health percentages, and never rewrites the user's code, data or configuration.",
+      "evidence": [
+        "ROADMAP.md",
+        "examples/gallery/bad_labels",
+        "src/trainproof/adapters.py"
+      ]
+    },
+    {
+      "question": "Does trainproof require a GPU, an ML framework, or specific hardware?",
+      "answer": "No. It reads plain log files - HuggingFace trainer_state.json, Coqui trainer text logs and generic JSONL or CSV - and runs on CPU. There is no network client, no cloud dependency and no telemetry collection; analysis is local and the user's data stays theirs. The optional HuggingFace TrainerCallback runs inside an existing training process but adds no GPU work of its own.",
+      "evidence": [
+        "src/trainproof/adapters.py",
+        "src/trainproof/integrations/hf.py",
+        "pyproject.toml"
+      ]
+    },
+    {
+      "question": "What commands does trainproof expose?",
+      "answer": "Seven: data (dataset preflight for speech and TTS corpora), tokenizer (tokenizer preflight), epoch (first-epoch verdict from training logs), doctor (the flagship zero-config autopsy, also exposed under the alias 'diagnose', which is counted as the same command rather than an eighth), compare (judge a run log against a baseline log), watch (live guardian that polls a training log) and preflight (pre-flight linter for LLM fine-tuning datasets). The lifecycle is preflight before the GPU, watch during, doctor and epoch after, compare against a known-good run.",
+      "evidence": [
+        "src/trainproof/cli.py",
+        "README.md"
+      ]
+    },
+    {
+      "question": "How is trainproof tested?",
+      "answer": "179 tests as of 0.13.0, run through release.ps1 against the freshly built wheel, plus golden snapshots that lock the verdict and the complete rule-ID set for every archived run and comparison pair. A drift test asserts the rule IDs in the source and in RULES.md match in both directions. A gallery guard fails the build if any shipped run, including each seed, is judged by no test. EVIDENCE_MATRIX.md is regenerated from the logs and a --check mode fails the suite if it is stale.",
+      "evidence": [
+        "release.ps1",
+        "tests/golden/",
+        "tests/test_contracts.py",
+        "scripts/regenerate_evidence.py"
+      ]
+    },
+    {
+      "question": "What Python versions does trainproof support?",
+      "answer": "Python 3.10 and newer, declared as requires-python >=3.10 in pyproject.toml and verified by release.ps1 against the shipped wheel.",
+      "evidence": [
+        "pyproject.toml"
+      ]
+    }
+  ],
+  "generated_by": "release.ps1",
+  "generated_at": "2026-07-31T16:32:19Z"
+}

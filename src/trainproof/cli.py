@@ -19,10 +19,17 @@ def parse_map(map_list):
                 overrides[canon.strip()] = col.strip()
     return overrides
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 _JSON_MODE = False
 _SARIF_PATH = None
+
+_VERDICT_SEVERITY = {"FAIL": 0, "WARN": 1, "NOT-CHECKED": 2, "PASS": 3}
+
+def _normalize_verdict(v):
+    """An unrecognised verdict means trainproof could not judge this report.
+    Map it to NOT-CHECKED so the enum stays closed and the exit code is 2."""
+    return v if v in _VERDICT_SEVERITY else "NOT-CHECKED"
 
 def _envelope(reports, worst_verdict, error=None):
     return {
@@ -46,10 +53,36 @@ def emit_sarif(reports):
     doc = to_sarif(reports, __import__('trainproof').__version__)
     Path(_SARIF_PATH).write_text(json.dumps(doc, indent=2), encoding="utf-8")
 
+def _get_worst_verdict(reports):
+    worst = "PASS"
+    for r in reports:
+        v = _normalize_verdict(r.get("verdict"))
+        if _VERDICT_SEVERITY.get(v, _VERDICT_SEVERITY["NOT-CHECKED"]) < _VERDICT_SEVERITY.get(worst, 3):
+            worst = v
+    return worst
+
+def _get_exit_code(reports):
+    has_fail = False
+    has_unjudged = False
+    for r in reports:
+        v = _normalize_verdict(r.get("verdict"))
+        if v == "FAIL":
+            has_fail = True
+        elif v == "NOT-CHECKED":
+            has_unjudged = True
+        for f in r.get("findings", []):
+            if f.get("id") in ("TP-NO-RECORDS", "TP-CMP-ERROR"):
+                has_unjudged = True
+    if has_fail:
+        return 1
+    elif has_unjudged:
+        return 2
+    return 0
+
 def output_json(reports, worst_verdict):
     emit_sarif(reports)
     print(json.dumps(_envelope(reports, worst_verdict), indent=2))
-    sys.exit(1 if worst_verdict == "FAIL" else 0)
+    sys.exit(_get_exit_code(reports))
 
 def fail_to_run(message):
     # trainproof could not judge: exit 2 and never synthesise a FAIL verdict,
@@ -243,13 +276,9 @@ def _run():
             )
             print()
 
-        _order = {"FAIL": 0, "WARN": 1, "PASS": 2}
-        results.sort(key=lambda r: _order.get(r["verdict"], 3))
+        results.sort(key=lambda r: _VERDICT_SEVERITY.get(_normalize_verdict(r.get("verdict")), _VERDICT_SEVERITY["NOT-CHECKED"]))
 
-        worst_verdict = "PASS"
-        for r in results:
-            if r["verdict"] == "FAIL": worst_verdict = "FAIL"
-            elif r["verdict"] == "WARN" and worst_verdict == "PASS": worst_verdict = "WARN"
+        worst_verdict = _get_worst_verdict(results)
 
         if is_json:
             output_json(results, worst_verdict)
@@ -282,7 +311,7 @@ def _run():
                 
         print_doctor_footer()
         emit_sarif(results)
-        sys.exit(1 if worst_verdict == "FAIL" else 0)
+        sys.exit(_get_exit_code(results))
 
     elif args.command == "compare":
         try:
@@ -335,10 +364,7 @@ def _run():
                     })
             
             if is_json:
-                worst_verdict = "PASS"
-                for r in all_reports:
-                    if r["verdict"] == "FAIL": worst_verdict = "FAIL"
-                    elif r["verdict"] == "WARN" and worst_verdict == "PASS": worst_verdict = "WARN"
+                worst_verdict = _get_worst_verdict(all_reports)
                 output_json(all_reports, worst_verdict)
                 
             print_compare_table(table_results)
@@ -346,9 +372,9 @@ def _run():
 
             if len(args.runs) == 1:
                 print_verdict_console(all_reports[0]["verdict"], all_reports[0]["findings"])
-                sys.exit(1 if all_reports[0]["verdict"] == "FAIL" else 0)
+                sys.exit(_get_exit_code(all_reports))
             
-            sys.exit(1 if any(r["verdict"] == "FAIL" for r in all_reports) else 0)
+            sys.exit(_get_exit_code(all_reports))
                 
         except Exception as e:
             fail_to_run(f"could not compare against {args.baseline}: {e}")
@@ -387,10 +413,7 @@ def _run():
         write_html_report(report_dict, html_out)
         print(f"\nSaved detailed HTML report to {html_out.absolute()}")
     
-    if report_dict.get("verdict") == "FAIL":
-        sys.exit(1)
-    else:
-        sys.exit(0)
+    sys.exit(_get_exit_code([report_dict]))
 
 if __name__ == "__main__":
     main()

@@ -4,6 +4,19 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.13.0] — 2026-07-31 — the honest-silence release
+
+A log that carries a loss column but executes zero check groups returned PASS with exit 0. "Checked and clean" and "nothing could be checked" shared one verdict. This release separates them so CI can tell them apart.
+
+### Added
+- **`TP-NOT-CHECKED` (NOT-CHECKED)**: New verdict and rule ID. Emitted when zero check groups executed, which requires fewer than five loss points AND a non-positive mean loss, with no other judgeable column (e.g. a short run whose loss is all zeros, the sub-threshold companion to TP-ZERO-LOSS). Its message states how many groups were considered and the skip reason for each, derived exactly from the `checks` structure added in v0.12.0.
+- **Severity and exit codes are now two separate axes.** Severity ordering (for `worst_verdict` and triage sort) is FAIL > WARN > NOT-CHECKED > PASS. This means WARN outranks NOT-CHECKED in severity while exiting 0. Exit code is 1 if any FAIL; else 2 if anything could not be judged (NOT-CHECKED, TP-NO-RECORDS, TP-CMP-ERROR); else 0.
+- `schema_version` bumped to 3 to reflect the new NOT-CHECKED verdict enum member and the separation of severity and exit codes. Documented in `CONTRACTS.md`.
+
+### Changed
+- `compare` against a NOT-CHECKED run (either run or baseline) yields `TP-CMP-UNCOMPARABLE`, reusing the existing uncomparable path rather than failing with `TP-NO-LOSS`.
+- `doctor` reports group NOT-CHECKED logs in their triage summary strictly between WARN and PASS.
+
 ## [0.12.0] — 2026-07-30 — the honest-verdict release
 
 No new diagnostic idea ships here. Every change closes a hole in a check that

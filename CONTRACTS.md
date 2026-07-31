@@ -17,7 +17,7 @@ run* — never "trainproof had a problem."
 |---|---|---|
 | `0` | No FAIL findings. The run was judged and passed, possibly with warnings. | PASS, WARN |
 | `1` | **A FAIL verdict about your run.** Stop and investigate. | diverging loss, dead run, NaN, zero LR |
-| `2` | **trainproof could not judge.** Says nothing about your run. | file not found, unreadable log, no records parsed, no logs in directory, missing optional dependency, internal error |
+| `2` | **trainproof could not judge.** Says nothing about your run. | NOT-CHECKED, file not found, unreadable log, no records parsed, no logs in directory, missing optional dependency, internal error |
 
 WARN exits `0` deliberately. Warnings are advisory, and a CI gate that goes red
 on every advisory gets disabled within a week. If you want warnings to fail a
@@ -34,19 +34,27 @@ guardian to collect its judgment is the intended workflow.
 
 ## JSON output (`--json`)
 
-`schema_version` is **2**. Available on `data`, `tokenizer`, `epoch`, `doctor`,
+`schema_version` is **3**. Available on `data`, `tokenizer`, `epoch`, `doctor`,
 `compare` and `preflight`. Not on `watch`, which is a streaming command with no
 single terminal state.
 
 ```json
 {
-  "schema_version": 2,
-  "trainproof_version": "0.10.0",
+  "schema_version": 3,
+  "trainproof_version": "0.13.0",
   "reports": [ { "verdict": "FAIL", "findings": [ ... ] } ],
   "worst_verdict": "FAIL",
   "error": null
 }
 ```
+
+The `verdict` enum is one of `FAIL`, `WARN`, `NOT-CHECKED`, or `PASS`. An unrecognised verdict is normalised to `NOT-CHECKED` and therefore exits `2`.
+
+**Severity and Exit Code are two separate axes:**
+- **Severity ordering** (used for `worst_verdict` and for doctor's triage sort): `FAIL` > `WARN` > `NOT-CHECKED` > `PASS`. `WARN` outranks `NOT-CHECKED` in severity, even though it exits 0.
+- **Exit code**: `1` if any `FAIL`; else `2` if anything could not be judged (`NOT-CHECKED`, `TP-NO-RECORDS`, `TP-CMP-ERROR`); else `0`.
+
+The addition of the `NOT-CHECKED` verdict member and this axis separation is why `schema_version` bumped to 3.
 
 Every report has `verdict` and `findings`. Every finding has `id`, `level`,
 `message`, `evidence` and `source`. `source` is `single_run` for rules judging

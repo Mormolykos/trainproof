@@ -12,8 +12,12 @@ def print_verdict_console(verdict: str, findings: list[dict[str, Any]]):
         print("[PASS] All checks passed.")
     elif verdict == "WARN":
         print("[WARN] Some checks triggered warnings:")
-    else:
+    elif verdict == "NOT-CHECKED":
+        print("[NOT-CHECKED] No check could be executed:")
+    elif verdict == "FAIL":
         print("[FAIL] Critical checks failed:")
+    else:
+        print(f"[{verdict}]")
         
     for finding in findings:
         level = finding.get("level", "INFO")
@@ -39,9 +43,9 @@ def write_html_report(report: dict[str, Any], path: str | Path) -> None:
  .wrap{{max-width:960px;margin:0 auto;padding:28px 18px 60px}}
  h1{{font-size:26px;margin:0 0 4px}} h2{{font-size:19px;margin:32px 0 10px}}
  .stat{{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px 18px;min-width:110px; display:inline-block;}}
- .stat b{{display:block;font-size:22px}} .stat.pass b{{color:#3fb950}} .stat.fail b{{color:#f85149}} .stat.warn b{{color:#d29922}}
+ .stat b{{display:block;font-size:22px}} .stat.pass b{{color:#3fb950}} .stat.fail b{{color:#f85149}} .stat.warn b{{color:#d29922}} .stat.not-checked b{{color:#58a6ff}}
  .card{{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px 14px;margin:10px 0}}
- .level-FAIL{{color:#f85149;font-weight:bold;}} .level-WARN{{color:#d29922;font-weight:bold;}} .level-PASS{{color:#3fb950;font-weight:bold;}}
+ .level-FAIL{{color:#f85149;font-weight:bold;}} .level-WARN{{color:#d29922;font-weight:bold;}} .level-PASS{{color:#3fb950;font-weight:bold;}} .level-NOT-CHECKED{{color:#58a6ff;font-weight:bold;}}
  .evidence{{color:#8b949e;font-size:13px;margin-top:4px}}
 </style></head><body><div class="wrap">
 <h1>Trainproof Report</h1>
@@ -68,12 +72,13 @@ def print_doctor_autopsy(filepath: str, fmt: str, num_records: int, step_range: 
     print(f"VERDICT: {verdict}")
     print("-" * 60)
     
-    passes = warns = fails = 0
+    passes = warns = fails = not_checked = 0
     for finding in findings:
         level = finding.get("level", "INFO")
         if level == "PASS": passes += 1
         elif level == "WARN": warns += 1
         elif level == "FAIL": fails += 1
+        elif level == "NOT-CHECKED": not_checked += 1
         
         msg = finding.get("message", "")
         rid = finding.get("id", "")
@@ -85,7 +90,7 @@ def print_doctor_autopsy(filepath: str, fmt: str, num_records: int, step_range: 
         print()
         
     print("-" * 60)
-    print(f"Findings: {passes} PASS, {warns} WARN, {fails} FAIL")
+    print(f"Findings: {passes} PASS, {warns} WARN, {fails} FAIL, {not_checked} NOT-CHECKED")
     print("=" * 60)
     print()
 

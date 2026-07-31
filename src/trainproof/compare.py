@@ -78,6 +78,27 @@ def check_compare(run_path: str | Path, base_path: str | Path, fmt: str = "auto"
     run_metrics = extract_metrics(run_records) if run_records else None
     base_metrics = extract_metrics(base_records) if base_records else None
 
+    run_epoch_res = check_epoch(run_path, fmt=fmt, mapping_overrides=mapping_overrides)
+
+    uncomparable = []
+    if run_epoch_res["verdict"] == "NOT-CHECKED":
+        uncomparable.append({
+            "id": "TP-CMP-UNCOMPARABLE",
+            "level": "FAIL",
+            "message": "Cannot compare: the run has no usable loss scale.",
+            "evidence": f"run {run_path} is NOT-CHECKED (0 groups executed)."
+        })
+    if base_epoch_res["verdict"] == "NOT-CHECKED":
+        uncomparable.append({
+            "id": "TP-CMP-UNCOMPARABLE",
+            "level": "FAIL",
+            "message": "Cannot compare: the baseline has no usable loss scale.",
+            "evidence": f"baseline {base_path} is NOT-CHECKED (0 groups executed)."
+        })
+    
+    if uncomparable:
+        return {"verdict": "FAIL", "findings": findings + uncomparable}
+
     if not run_metrics:
         return {"verdict": "FAIL", "findings": [{"id": "TP-NO-LOSS", "level": "FAIL", "message": "Run log has fewer than 10 valid loss points.", "evidence": str(run_path)}]}
     if not base_metrics:

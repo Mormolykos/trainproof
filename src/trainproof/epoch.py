@@ -326,12 +326,22 @@ def check_records(records: list[dict]) -> dict[str, Any]:
                          "evidence": f"median gpu_util {med_gpu:.1f}% observed."})
 
     if verdict == "PASS":
-        msg = "No mechanical failures detected."
-        if ran:
+        if not ran:
+            verdict = "NOT-CHECKED"
+            msg = f"{len(CHECK_GROUPS)} check groups considered, 0 executed."
+            skipped_list = "; ".join(f"{g} ({r})" for g, r in sorted(skipped.items()))
+            findings.append({
+                "id": "TP-NOT-CHECKED", 
+                "level": "NOT-CHECKED", 
+                "message": msg, 
+                "evidence": f"Skipped: {skipped_list}"
+            })
+        else:
+            msg = "No mechanical failures detected."
             msg += f" Ran: {', '.join(sorted(ran))}."
-        if skipped:
-            msg += " Skipped: " + "; ".join(f"{g} ({r})" for g, r in sorted(skipped.items())) + "."
-        findings.append({"id": "TP-PASS", "level": "PASS", "message": msg, "evidence": f"{len(valid_losses)} steps analyzed."})
+            if skipped:
+                msg += " Skipped: " + "; ".join(f"{g} ({r})" for g, r in sorted(skipped.items())) + "."
+            findings.append({"id": "TP-PASS", "level": "PASS", "message": msg, "evidence": f"{len(valid_losses)} steps analyzed."})
 
     return {
         "verdict": verdict,

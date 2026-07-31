@@ -82,14 +82,14 @@ def test_a_single_zero_loss_does_not_disable_divergence():
 
 
 def test_too_few_points_is_reported_as_skipped_never_as_passed():
-    # four zeros is not evidence of a degenerate run. The verdict may be PASS,
-    # but the report must not imply any check found the run healthy.
+    # four zeros is not evidence of a degenerate run. The verdict is NOT-CHECKED,
+    # and the report must not imply any check found the run healthy.
     report = check_records([{"step": i, "loss": 0.0} for i in range(4)])
-    assert "TP-ZERO-LOSS" not in ids_of(report)
+    assert report["verdict"] == "NOT-CHECKED"
+    assert "TP-NOT-CHECKED" in ids_of(report)
+    assert "TP-PASS" not in ids_of(report)
     assert report["checks"]["ran"] == []
     assert set(report["checks"]["skipped"]) == set(CHECK_GROUPS)
-    assert "Ran:" not in pass_message(report)
-    assert "Skipped:" in pass_message(report)
 
 
 # --- change 2: TP-PASS reports only checks that actually executed ------------

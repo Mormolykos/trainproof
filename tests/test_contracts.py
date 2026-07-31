@@ -159,7 +159,8 @@ def test_preflight_supports_json(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
 
     assert code == 1
-    assert payload["schema_version"] == 2
+    # Bumped to 3 in v0.13.0 for the NOT-CHECKED verdict and separated exit-code axis
+    assert payload["schema_version"] == 3
     assert payload["reports"][0]["verdict"] == "FAIL"
 
 
@@ -200,7 +201,8 @@ def test_envelope_shape_is_stable(capsys):
     run_cli(["epoch", str(GALLERY / "healthy" / "trainer_state.json"), "--json"])
     payload = json.loads(capsys.readouterr().out)
 
-    assert payload["schema_version"] == 2
+    # Bumped to 3 in v0.13.0 for the NOT-CHECKED verdict and separated exit-code axis
+    assert payload["schema_version"] == 3
     assert payload["trainproof_version"] == trainproof.__version__
     assert payload["error"] is None
     assert set(payload) == {

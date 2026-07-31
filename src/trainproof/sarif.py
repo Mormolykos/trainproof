@@ -5,14 +5,14 @@ anchored to the log with a region of line 1: GitHub's code-scanning ingest
 requires a physical location, and a synthetic step-derived line number would
 point at nothing a reader could open.
 
-Levels map to SARIF's three: FAIL -> error, WARN -> warning, everything else
-(INFO, PASS) -> note. INFO and PASS findings are still emitted, because a run
+Levels map to SARIF's three: FAIL -> error, WARN and NOT-CHECKED -> warning, everything
+else (INFO, PASS) -> note. INFO and PASS findings are still emitted, because a run
 whose PASS states which checks were skipped is exactly what a reviewer needs.
 """
 
 SCHEMA = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
 
-_LEVELS = {"FAIL": "error", "WARN": "warning"}
+_LEVELS = {"FAIL": "error", "WARN": "warning", "NOT-CHECKED": "warning"}
 
 
 def _level(finding):

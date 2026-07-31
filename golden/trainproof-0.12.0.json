@@ -236,6 +236,16 @@
       ]
     },
     {
+      "question": "What evidence ships with trainproof, and has it been validated against a real failure rather than only deliberate sabotage?",
+      "answer": "Nineteen real training logs ship in the repository, and one of them broke on its own. Eighteen are the fault-injection gallery in examples/gallery/: a Qwen2.5-3B-Instruct QLoRA fine-tune (4-bit NF4, LoRA r=16, 300 steps on Alpaca-cleaned) in six configurations, one healthy and five with exactly one knob deliberately broken, each repeated at seeds 42, 43 and 44. The nineteenth is examples/real_world/xtts_diverged/, a 9.8-hour Coqui XTTS v2 fine-tune that diverged on its own - the first shipped failure nobody injected, and the repository's only Coqui-format fixture, which makes it a regression test for that adapter against a real 580KB log rather than a synthetic one. Its own bookkeeping corroborates the verdict independently: the last BEST MODEL line in that log is best_model_49880.pth while the last checkpoint written is checkpoint_70000.pth, so the weights worth keeping had existed for roughly 23,000 steps before the run stopped. Every one of the nineteen has its verdict and complete rule-ID set pinned in tests/golden/, 38 snapshots in total, all byte-identical to 0.11.0 at this version.",
+      "evidence": [
+        "examples/real_world/README.md",
+        "examples/gallery/README.md",
+        "tests/test_golden_gallery.py",
+        "EVIDENCE_MATRIX.md"
+      ]
+    },
+    {
       "question": "What are trainproof's limitations?",
       "answer": "It judges only what appears in a training log or configuration, so failures visible only inside the training loop are out of scope. A PASS verdict is still possible when no check executed at all, on a log carrying a loss column and fewer than five points; the report names every skip, but 'nothing could be checked' shares a verdict with 'checked and clean'. Partial zero-loss, where only some steps collapse to zero, is not detected. A single run's loss curve cannot detect a corrupted dataset, and comparison cannot detect overfitting, so neither mode subsumes the other. Log-format support is limited to HuggingFace trainer_state, Coqui trainer logs and generic CSV/JSONL, with no TensorBoard adapter. The shipped Coqui log carries no gradient norms, so gradient rules are blind on it and say so. Preserved trainer_state metadata is not yet read by any rule, so configured intent is not yet checked against executed reality. Exit code 2 is not a statement about the run. This is a pre-1.0 release.",
       "evidence": [

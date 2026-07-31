@@ -12,6 +12,7 @@ These rules run on a single training log (via `trainproof epoch` or `trainproof 
 |---|---|---|
 | `TP-NO-RECORDS` | FAIL | The log file could not be parsed or contained no valid records. Reaching this through the CLI exits `2` (cannot judge), not `1`. |
 | `TP-NO-LOSS` | FAIL | No loss metric could be found in the log at all. (In `compare`, the same ID means the log has fewer than 10 valid loss points.) |
+| `TP-NOT-CHECKED` | NOT-CHECKED | The number of check groups that executed is exactly zero, which requires fewer than five loss points AND a non-positive mean loss, with no other judgeable column (e.g. a short run whose loss is all zeros, the sub-threshold companion to `TP-ZERO-LOSS`). The run was not judged. Reaching this through the CLI exits `2` (cannot judge), not `1`. |
 | `TP-NAN` | FAIL | The loss curve contains NaN or Infinity values. |
 | `TP-ZERO-LOSS` | FAIL | Every finite loss is **exactly** 0.0 (minimum 5 points). Cross-entropy returns 0.0 when every target label is masked to `-100`, so the usual cause is the data collator's prompt masking or a response truncated out of the context window. Detected by exact equality, never a threshold: a very small loss is real convergence, which is a different thing. |
 | `TP-ZERO-GRAD` | FAIL | Every finite gradient norm is **exactly** 0.0 (minimum 5 points). The backward graph is severed or every parameter is frozen; with PEFT this is usually reentrant gradient checkpointing over frozen input embeddings, which detaches the graph before it reaches the adapters. |
