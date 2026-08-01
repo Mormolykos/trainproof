@@ -5,6 +5,7 @@ from pathlib import Path
 from .speech.data import check_data
 from .speech.tokenizer import check_tokenizer
 from .epoch import check_epoch
+from .envcheck import check_env
 from .compare import check_compare
 from .watch import watch_loop
 from .report import print_verdict_console, write_html_report, print_doctor_autopsy, print_doctor_footer, print_compare_table
@@ -159,6 +160,18 @@ def _run():
     preflight_parser.add_argument("--text-field", type=str, help="Text field to extract")
     preflight_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
     preflight_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
+
+    # Env Command
+    env_parser = subparsers.add_parser("env", help="Environment preflight: can this machine start this run?")
+    env_parser.add_argument("--module", type=str, help="Python module to test-import in a subprocess")
+    env_parser.add_argument("--python", type=str, help="Interpreter to run the import probe with")
+    env_parser.add_argument("--cwd", type=str, help="Working directory for the import probe")
+    env_parser.add_argument("--checkpoint", type=str, help="Path to a .pt/.pth/.ckpt to inspect (never unpickled)")
+    env_parser.add_argument("--required-gb", type=float, help="System RAM this run needs (GB)")
+    env_parser.add_argument("--output-dir", type=str, help="Directory where checkpoints will be saved")
+    env_parser.add_argument("--checkpoint-gb", type=float, help="Size of one checkpoint (GB)")
+    env_parser.add_argument("--keep", type=int, default=1, help="Number of checkpoints kept on disk (default: 1)")
+    env_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
 
     args = parser.parse_args()
     
@@ -396,6 +409,18 @@ def _run():
         
         result = preflight(args.dataset, tokenizer=tokenizer, max_len=args.max_len, text_field=args.text_field)
         report_dict = {"verdict": result.verdict, "findings": result.findings}
+
+    elif args.command == "env":
+        report_dict = check_env(
+            module=args.module,
+            checkpoint=args.checkpoint,
+            required_gb=getattr(args, "required_gb", None),
+            output_dir=getattr(args, "output_dir", None),
+            checkpoint_gb=getattr(args, "checkpoint_gb", None),
+            keep=args.keep,
+            python=args.python,
+            cwd=getattr(args, "cwd", None),
+        )
 
     report_dict["findings"] = tag_source(report_dict.get("findings", []), "single_run")
     if is_json:

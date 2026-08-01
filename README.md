@@ -306,6 +306,56 @@ tokenizer, so it additionally needs `pip install transformers`; without it you g
 exit 2 ("could not judge") and a one-line reason, never a false verdict about your
 data.
 
+## Environment pre-flight (v0.15): can this machine start the run at all?
+
+Dataset preflight assumes the run can start. Sometimes it cannot — and those
+failures never produce a log, so no log-based tool can see them. A stack that
+will not import, a checkpoint that segfaults its own loader, a first batch that
+exhausts system RAM: zero steps, zero metrics, hours gone.
+
+```bash
+trainproof env --module train --cwd . --checkpoint out/last.ckpt --required-gb 20
+```
+
+```text
+========================================
+TRAINPROOF VERDICT
+========================================
+[FAIL] Critical checks failed:
+  [FAIL] TP-ENV-IMPORT-FAIL: 'train' cannot be imported - this run cannot start.
+         Evidence: ImportError: cannot import name 'BeamSearchScorer' from
+         'transformers'  (raised at .../stream_generator.py:13)
+  [FAIL] TP-ENV-MEM-INSUFFICIENT: Less system RAM is available than this run
+         declares it needs.
+         Evidence: 10.8 GB available, 20.0 GB required (31.1 GB total).
+========================================
+```
+
+*Checks: import (in a subprocess), checkpoint integrity, system RAM headroom, free disk.*
+
+Three things this does deliberately:
+
+**Imports run out of process.** The failures here are violent — a segfaulting
+extension, a CUDA abort, a library calling `os._exit` during import. In-process,
+any of them kills the linter and you learn nothing. Out of process, a crash with
+no Python exception is reported as `TP-ENV-IMPORT-CRASH` and named as a native
+fault rather than misreported as an `ImportError`.
+
+**Checkpoints are never unpickled.** `torch.load` executes arbitrary code by
+design — the reason torch 2.6 flipped `weights_only` to `True`. A tool that must
+run the file it inspects is not a safety tool. A checkpoint is read as the ZIP
+archive it is: entry table, storage count, CRC. It distinguishes missing,
+zero-byte, truncated mid-write, CRC-corrupt, legacy pre-1.6 pickle and complete.
+
+**System RAM, not VRAM.** A GPU that runs out of memory raises a clean error and
+the run fails. On Windows the driver spills to system RAM instead, and the machine
+pages until the desktop stops responding — recoverable only by a hard reset.
+
+`--cwd` matters: editable installs resolve relative to the working directory, so
+probing from elsewhere reports `No module named X` for a package that imports
+perfectly where training launches. Anything it cannot measure is `NOT-CHECKED`
+with the reason, never a silent pass.
+
 ## Supported log formats
 
 - HuggingFace Trainer (`trainer_state.json`)

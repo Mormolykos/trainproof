@@ -112,3 +112,15 @@ MAX_GRADNORM_MEDIAN_RATIO = 5.0
 # -----------------
 STEP_TIME_CLIFF_RATIO = 3.0
 LOADER_FRACTION_MAX = 0.5
+
+# -----------------
+# ENVIRONMENT PREFLIGHT
+# -----------------
+
+# Free system RAM that must remain above a run's declared requirement before
+# the headroom stops being comfortable. Set from a real failure: a 31 GB machine
+# whose first training batch wanted ~19 GB had enough memory on paper and still
+# froze, because the OS began paging long before it ran out. A margin measured
+# in single-digit gigabytes is the difference between a slow run and a desktop
+# that cannot be recovered without a hard reset.
+MIN_FREE_RAM_MARGIN_GB = 4.0

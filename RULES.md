@@ -109,3 +109,32 @@ These rules validate tokenizers and datasets (via `trainproof tokenizer` or `tra
 | `TP-PRE-CONTEXT-OVERFLOW` | WARN | Records exceed the maximum context length. |
 | `TP-PRE-MALFORMED-JSONL` | FAIL | JSONL parsing failed for some lines. |
 | `TP-PRE-OK` | PASS | The preflight checks passed. |
+
+## Environment Preflight Rules (trainproof env)
+
+These rules check whether the machine can start a training run at all — before a single GPU-second is spent. Import checks run in a subprocess; checkpoints are read as ZIP archives and never unpickled.
+
+| ID | Default Level | Description |
+|---|---|---|
+| `TP-ENV-MEM-UNKNOWN` | NOT-CHECKED | System memory could not be determined on this platform. |
+| `TP-ENV-MEM-INFO` | INFO | System memory was measured but no `--required-gb` was given to judge it. |
+| `TP-ENV-MEM-INSUFFICIENT` | FAIL | Less system RAM is available than the run declares it needs. |
+| `TP-ENV-MEM-TIGHT` | WARN | Available RAM exceeds the requirement but the margin is below `MIN_FREE_RAM_MARGIN_GB`. |
+| `TP-ENV-MEM-OK` | PASS | System RAM headroom is sufficient for the declared requirement. |
+| `TP-ENV-CWD-MISSING` | NOT-CHECKED | The working directory to probe from does not exist; no import subprocess was run. |
+| `TP-ENV-IMPORT-TIMEOUT` | FAIL | The import probe did not finish within the timeout — an import that hangs hangs the training launch too. |
+| `TP-ENV-PYTHON-UNUSABLE` | NOT-CHECKED | The interpreter to probe with could not be run. |
+| `TP-ENV-IMPORT-OK` | PASS | The requested module imports cleanly in a subprocess. |
+| `TP-ENV-IMPORT-CRASH` | FAIL | Importing the module crashed the interpreter with no Python exception (native crash / segfault). |
+| `TP-ENV-IMPORT-FAIL` | FAIL | The module cannot be imported — this run cannot start. |
+| `TP-ENV-CKPT-MISSING` | FAIL | The checkpoint path does not exist. |
+| `TP-ENV-CKPT-EMPTY` | FAIL | The checkpoint is a zero-byte file — a save that was interrupted before writing. |
+| `TP-ENV-CKPT-LEGACY` | NOT-CHECKED | The checkpoint uses the pre-1.6 torch format (a bare pickle); inspecting it would require unpickling, which executes arbitrary code, so trainproof refuses. |
+| `TP-ENV-CKPT-UNREADABLE` | FAIL | The checkpoint is neither a torch ZIP archive nor a recognisable pickle, or it lacks a `data.pkl` entry. |
+| `TP-ENV-CKPT-TRUNCATED` | FAIL | The checkpoint archive is incomplete — the save did not finish. |
+| `TP-ENV-CKPT-CORRUPT` | FAIL | The checkpoint archive fails its own CRC check. |
+| `TP-ENV-CKPT-OK` | PASS | The checkpoint is a complete, readable torch archive with CRC intact — read without unpickling. |
+| `TP-ENV-DISK-UNKNOWN` | NOT-CHECKED | The output directory does not exist and neither does its parent, so free space cannot be measured. |
+| `TP-ENV-DISK-INFO` | INFO | Free disk space was measured but no `--checkpoint-gb` was given to judge it. |
+| `TP-ENV-DISK-INSUFFICIENT` | FAIL | Not enough disk space for the checkpoints this run will write. |
+| `TP-ENV-DISK-OK` | PASS | Disk space is sufficient for the declared checkpoints. |

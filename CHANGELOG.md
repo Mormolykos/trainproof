@@ -4,6 +4,25 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.15.0] — 2026-08-01 — the before-the-GPU release
+
+Every check in trainproof until now reads a log, which means the run already started and the hours are already spent. The failures that cost the most never reach a log at all: a stack that will not import, a checkpoint that cannot be deserialised, a first batch that exhausts system RAM and freezes the desktop. All three happened to the author in a single day on a run that never logged one step. This release checks them before the GPU is touched.
+
+### Added
+- **`trainproof env`**: environment preflight. Judges whether a machine can start a run, not whether a run went well. All checks are stdlib-only — no torch, no ML framework, no GPU, no network.
+- **Import checks** (`TP-ENV-IMPORT-OK` / `-FAIL` / `-CRASH` / `-TIMEOUT`): imports the training entrypoint **in a subprocess** and reports the exact exception, message and raising file. Out-of-process is not a detail: the failures here are violent — a segfaulting extension, a CUDA abort, a library calling `os._exit` during import — and in-process any of them would kill trainproof and tell the user nothing. A crash with no Python exception is reported as `TP-ENV-IMPORT-CRASH` (a native fault, not an `ImportError`) rather than misdiagnosed.
+- **`--cwd`**: probes from the directory training actually launches in. Editable installs and source checkouts resolve relative to the working directory, so probing from elsewhere reports "No module named X" for a package that imports perfectly — a false FAIL that blames the environment for the linter's mistake. A missing `--cwd` is `TP-ENV-CWD-MISSING` (NOT-CHECKED) and no subprocess runs.
+- **Checkpoint checks** (`TP-ENV-CKPT-*`): a `.pt`/`.pth`/`.ckpt` is inspected **without deserialising it**. `torch.load` executes arbitrary code by design — the reason torch 2.6 flipped `weights_only` to True — so a linter that must run the file it inspects is not a safety tool. Checkpoints are read as the ZIP archives they are: entry table, storage count and CRC, all from the archive directory. Distinguishes missing, zero-byte, truncated, CRC-corrupt, legacy pre-1.6 pickle (reported NOT-CHECKED, because refusing to unpickle is correct behaviour rather than an error) and complete.
+- **Memory checks** (`TP-ENV-MEM-*`): available versus required system RAM, with a headroom threshold. On Windows the driver spills to system RAM instead of raising a clean OOM, so exhaustion freezes the desktop rather than failing the run — this is the check that would have prevented two hard resets. Where memory cannot be measured it reports `TP-ENV-MEM-UNKNOWN` (NOT-CHECKED); an unmeasurable machine is never reported as a machine with no memory.
+- **Disk checks** (`TP-ENV-DISK-*`): free space against declared checkpoint size times checkpoints kept.
+
+### Fixed
+- `TP-ENV-CKPT-TRUNCATED` now fires on an archive whose ZIP header is present but whose central directory is missing. A save killed mid-write leaves exactly that, and `zipfile.is_zipfile()` returns False for it, so the most common real checkpoint failure was being reported as "not a checkpoint at all" — the difference between resuming from the previous checkpoint and hunting for a file that was never written. Found by a test, before release.
+
+### Notes
+- 22 new rule IDs, all under the `TP-ENV-` prefix: 62 → 84. `schema_version` remains 3; no verdict, threshold or existing rule changed, and no consumer contract is broken.
+- 210 → 228 tests.
+
 ## [0.14.0] — 2026-08-01 — the third-framework release
 
 Every rule shipped so far had only ever been tested against HuggingFace `trainer_state.json` files. PyTorch Lightning, Fish Speech and most research code write their metrics to TensorBoard event files and nowhere else, so those runs were invisible: a Lightning run could overfit for three hours and trainproof had nothing to read. This release adds the missing reader and validates the rules against real runs from two more frameworks.
