@@ -18,12 +18,25 @@ import sys
 from pathlib import Path
 
 import trainproof
+from trainproof.adapters import parse_log_with_format_info
 from trainproof.compare import check_compare
 from trainproof.epoch import check_epoch
 
 ROOT = Path(__file__).resolve().parent.parent
 GALLERY = ROOT / "examples" / "gallery"
+EVIDENCE = ROOT / "evidence"
 OUT = ROOT / "EVIDENCE_MATRIX.md"
+
+# Real training runs from frameworks other than HuggingFace. The gallery above
+# is synthetic-by-design -- one knob broken at a time -- which proves the rules
+# fire but not that they survive contact with logs nobody wrote for us. These
+# did not exist before v0.14.0, when the rules had only ever been tested against
+# trainer_state.json. `None` means "the event file in this directory".
+EVIDENCE_RUNS = [
+    ("Coqui XTTS v2", "xtts_coqui_feb2026", "trainer_0_log.txt", "coqui"),
+    ("Coqui XTTS v2", "xtts_coqui_feb2026", None, "tfevents"),
+    ("Lightning / Fish Speech", "fish_lightning_feb2026", None, "tfevents"),
+]
 
 BASELINE = "healthy"
 SEED_DIRS = {42: None, 43: "seed43", 44: "seed44"}
@@ -50,6 +63,39 @@ def configs() -> list[str]:
     """Discovered from disk, never declared: a new run cannot be left out."""
     found = sorted(p.name for p in GALLERY.iterdir() if p.is_dir())
     return [BASELINE] + [c for c in found if c != BASELINE]
+
+
+def evidence_path(subdir: str, filename: str | None) -> Path | None:
+    d = EVIDENCE / subdir
+    if not d.is_dir():
+        return None
+    if filename is not None:
+        p = d / filename
+        return p if p.exists() else None
+    events = sorted(p for p in d.iterdir() if "tfevents" in p.name)
+    return events[0] if events else None
+
+
+def evidence_rows() -> list[dict]:
+    """Judge each real-world log with the shipped rules, at generation time."""
+    rows = []
+    for framework, subdir, filename, fmt in EVIDENCE_RUNS:
+        path = evidence_path(subdir, filename)
+        if path is None:
+            continue
+        records, *_ = parse_log_with_format_info(path, fmt=fmt)
+        report = check_epoch(str(path), fmt=fmt)
+        steps = [r["step"] for r in records if "step" in r]
+        rows.append({
+            "framework": framework,
+            "file": path.name,
+            "fmt": fmt,
+            "records": len(records),
+            "span": f"{int(min(steps))}..{int(max(steps))}" if steps else "-",
+            "report": report,
+            "rules": rules_of(report),
+        })
+    return rows
 
 
 def cell(report: dict) -> str:
@@ -129,8 +175,51 @@ def build() -> str:
     for run_s, base_s, rep in cross:
         L.append(f"| healthy seed {run_s} | healthy seed {base_s} | {cell(rep)} |")
 
+    # ---- real runs from other frameworks --------------------------------------
+    ev = evidence_rows()
+    if ev:
+        L += [
+            "",
+            "## Real runs, other frameworks (`trainproof epoch`)",
+            "",
+            "Training runs nobody wrote for trainproof, judged by the shipped rules.",
+            "The logs are in `evidence/`. Both XTTS rows are the *same run* read by two",
+            "independent parsers -- a text log and a binary event file.",
+            "",
+            "| framework | log | format | records | steps | verdict |",
+            "|---|---|---|---|---|---|",
+        ]
+        for r in ev:
+            L.append(
+                f"| {r['framework']} | `{r['file']}` | `{r['fmt']}` | "
+                f"{r['records']} | {r['span']} | {cell(r['report'])} |"
+            )
+
     # ---- derived observations: computed, not asserted -------------------------
     obs = []
+
+    # Two readers, one run: if the text log and the event file of the same XTTS
+    # fine-tune disagree, one of the parsers is wrong and the table above is
+    # worthless. Checked here rather than asserted in prose.
+    by_file = {}
+    for r in ev:
+        by_file.setdefault(r["framework"], []).append(r)
+    for framework, rows in by_file.items():
+        if len(rows) < 2:
+            continue
+        rulesets = {frozenset(r["rules"]) for r in rows}
+        verdicts = {r["report"]["verdict"] for r in rows}
+        fmts = ", ".join(f"`{r['fmt']}`" for r in rows)
+        if len(rulesets) == 1 and len(verdicts) == 1:
+            obs.append(
+                f"{framework}: {fmts} are two independent readers of one run and they "
+                f"agree exactly -- same verdict, same rule set."
+            )
+        else:
+            obs.append(
+                f"{framework}: {fmts} read the same run and **disagree** "
+                f"(verdicts {sorted(verdicts)}). One of these parsers is wrong."
+            )
 
     # Severity, not just FAIL: a mode that can only reach WARN on a broken run is
     # a mode that would not stop CI, and that is the interesting asymmetry.

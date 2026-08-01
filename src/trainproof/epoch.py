@@ -165,9 +165,25 @@ def check_records(records: list[dict]) -> dict[str, Any]:
     # test below is guarded by `median_gn > 0`, so an identically-zero gradient
     # norm skipped it in silence. An all-zero grad norm is the log signature of
     # a severed backward graph, which is a finding, not an absence of one.
+    # ...unless the loss demonstrably fell. A run cannot both learn and receive
+    # no gradient, so an all-zero series alongside real improvement means the
+    # logger is reporting something other than the true norm (Coqui writes
+    # TrainEpochStats/avg_grad_norm as 0.0 when clipping is off). Claiming a
+    # severed graph there is a false FAIL on a healthy run - found on a real
+    # 125k-step XTTS fine-tune whose loss reached 0.017.
+    _nz_losses = [l for l in valid_losses if l != 0.0]
+    _loss_improved = bool(_nz_losses) and min(_nz_losses) < _nz_losses[0] * (
+        1 - rules.MIN_LOSS_IMPROVEMENT
+    )
+
     if len(valid_gns) >= rules.MIN_POINTS_FOR_DEGENERATE_CHECK:
-        ok("zero-grad")
-        if all(g == 0.0 for g in valid_gns):
+        if all(g == 0.0 for g in valid_gns) and _loss_improved:
+            no("zero-grad",
+               f"all {len(valid_gns)} gradient norms are 0.0 but the loss improved from "
+               f"{_nz_losses[0]:.4f} to {min(_nz_losses):.4f} - the log is reporting an "
+               "aggregate, not the true gradient norm")
+        elif all(g == 0.0 for g in valid_gns):
+            ok("zero-grad")
             findings.append({
                 "id": "TP-ZERO-GRAD",
                 "level": "FAIL",
@@ -181,6 +197,8 @@ def check_records(records: list[dict]) -> dict[str, Any]:
                 ),
             })
             verdict = "FAIL"
+        else:
+            ok("zero-grad")
     elif not valid_gns:
         no("zero-grad", "no finite gradient norms in the log")
     else:

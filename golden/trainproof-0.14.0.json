@@ -1,0 +1,218 @@
+{
+  "project": "trainproof",
+  "version": "0.14.0",
+  "release_date": "2026-08-01",
+  "verified": {
+    "test_count": 210,
+    "test_command": "python -m pytest --collect-only -q",
+    "python_requires": ">=3.10",
+    "commands": [
+      {
+        "name": "data",
+        "purpose": "Dataset preflight for speech/TTS corpora."
+      },
+      {
+        "name": "tokenizer",
+        "purpose": "Tokenizer preflight."
+      },
+      {
+        "name": "epoch",
+        "purpose": "First-epoch verdict from training logs."
+      },
+      {
+        "name": "doctor",
+        "purpose": "Flagship zero-config autopsy of training logs. Exposed under the alias 'diagnose'."
+      },
+      {
+        "name": "compare",
+        "purpose": "Compare a run log against a baseline log."
+      },
+      {
+        "name": "watch",
+        "purpose": "Live guardian: poll a training log."
+      },
+      {
+        "name": "preflight",
+        "purpose": "Pre-flight linter for LLM fine-tuning datasets."
+      }
+    ],
+    "features_added": [
+      {
+        "claim": "0.14.0 adds a fifth log format, tfevents: a reader for TensorBoard event files (events.out.tfevents.*). Before it, trainproof read HuggingFace trainer_state.json, Coqui trainer text logs, JSONL and CSV. PyTorch Lightning, Fish Speech and most research training code write their scalars to TensorBoard event files and nowhere else, so those runs produced no readable log at all - a Lightning run could overfit for hours with nothing for trainproof to judge.",
+        "evidence": "src/trainproof/tfevents.py"
+      },
+      {
+        "claim": "The event reader is written from the wire format - TFRecord framing plus the Event, Summary and TensorProto protobuf fields required - and imports no tensorflow, no tensorboard, no protobuf library, no torch and no numpy. Reading a log file does not require installing a training stack, so trainproof's zero-ML-dependency guarantee is unchanged at 0.14.0.",
+        "evidence": "src/trainproof/tfevents.py"
+      },
+      {
+        "claim": "The reader is validated against the reference implementation rather than against itself: on a real 2049-step PyTorch Lightning run it reproduces tensorboard.backend.event_processing.EventAccumulator byte-exact - all 13 scalar tags, every point count, and first and last values to within 1e-6 relative.",
+        "evidence": "tests/test_v014_tfevents.py"
+      },
+      {
+        "claim": "Scalars logged as rank-0 tensors are decoded in addition to simple_value. PyTorch Lightning writes the former, so a reader that handles only simple_value reports an empty run rather than an error.",
+        "evidence": "src/trainproof/tfevents.py:_tensor_scalar"
+      },
+      {
+        "claim": "Tag normalisation maps framework-specific TensorBoard names onto trainproof's canonical columns: train/loss, training/loss and TrainIterStats/loss all resolve to loss; val/loss and EvalStats/avg_loss to eval_loss; lr-AdamW/pg1 and TrainIterStats/current_lr to lr. Section names are matched by substring because frameworks do not agree on them - Lightning writes train and val, Coqui writes TrainIterStats and EvalStats.",
+        "evidence": "src/trainproof/tfevents.py:normalize_tag"
+      },
+      {
+        "claim": "When several tags claim one canonical column - Coqui logs TrainIterStats/loss per step and TrainEpochStats/avg_loss per epoch - the denser series wins, with ties broken alphabetically so the selection is deterministic across runs rather than dependent on dictionary order.",
+        "evidence": "src/trainproof/tfevents.py:scalars_to_records"
+      },
+      {
+        "claim": "--format tfevents is accepted by epoch, doctor, compare and watch, and auto-detection recognises event files by name while excluding source and text suffixes. A directory argument discovers event files and merges a directory of shards into one series.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "A truncated event file - the normal state of a killed run - is read up to the cut instead of raising, and a record that fails to decode is skipped rather than aborting the file. A killed run is the run most in need of judging.",
+        "evidence": "src/trainproof/tfevents.py:read_scalars"
+      },
+      {
+        "claim": "TP-ZERO-GRAD no longer fires when the loss demonstrably improved. The rule reported a severed backward graph whenever every finite gradient norm was exactly 0.0; Coqui writes TrainEpochStats/avg_grad_norm as 0.0 when clipping is off, so a healthy 125,000-step XTTS fine-tune whose loss reached 0.017 was reported FAIL. A run cannot both learn and receive no gradient, so the check now stands down when the loss improved by more than MIN_LOSS_IMPROVEMENT and records the reason as a skip. It remains armed when the loss is stuck. This false positive was found by running the shipped rules against a real run, not by a test.",
+        "evidence": "src/trainproof/epoch.py"
+      }
+    ],
+    "architecture_facts": [
+      {
+        "claim": "62 distinct TP-* rule IDs exist in the source at 0.14.0, unchanged from 0.13.0. 0.14.0 adds no new rule: it adds a log format that lets the existing rules see runs they previously could not read, and repairs one false positive.",
+        "evidence": "tests/test_contracts.py"
+      },
+      {
+        "claim": "JSON schema_version remains 3 at 0.14.0. The verdict enum is unchanged (PASS, WARN, NOT-CHECKED, FAIL) and no consumer contract is broken; 0.14.0 is a minor bump because it adds a capability, not because it breaks one.",
+        "evidence": "CONTRACTS.md"
+      },
+      {
+        "claim": "trainproof reads five log formats at 0.14.0: HuggingFace trainer_state.json, Coqui trainer text logs, TensorBoard event files, JSONL and CSV. Format is auto-detected and can be overridden with --format hf|coqui|tfevents|jsonl|csv.",
+        "evidence": "src/trainproof/adapters.py"
+      },
+      {
+        "claim": "The analysis pipeline parses scalar metric records - step, loss, learning rate, gradient norm, timing, eval loss - and never inspects model weights, activations or gradients. It runs with no ML framework, no network client and no telemetry, and this remains true of the TensorBoard reader added in 0.14.0.",
+        "evidence": "src/trainproof/adapters.py"
+      },
+      {
+        "claim": "Severity and exit code are separate axes. Severity orders FAIL, WARN, NOT-CHECKED, PASS; the exit code is 1 if any finding is FAIL, 2 if anything could not be judged, and 0 otherwise. A WARN verdict such as TP-OVERFIT therefore exits 0 and does not block CI.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "EVIDENCE_MATRIX.md is generated by scripts/regenerate_evidence.py, never hand-edited: every verdict in it is computed by running the shipped rules over the shipped logs at generation time, and the derived observations at the bottom are computed too.",
+        "evidence": "scripts/regenerate_evidence.py"
+      },
+      {
+        "claim": "The evidence base at 0.14.0 covers three training frameworks. HuggingFace is represented by the synthetic doomed-runs gallery of 6 configs across 3 seeds - Qwen2.5-3B-Instruct, 4-bit NF4, LoRA r=16, 300 steps. Coqui XTTS v2 and PyTorch Lightning / Fish Speech are represented by real fine-tunes on an RTX 5080 whose logs ship in evidence/.",
+        "evidence": "EVIDENCE_MATRIX.md"
+      },
+      {
+        "claim": "A 125,000-step Coqui XTTS v2 fine-tune ships as both a text log and the TensorBoard event file written by the same run. The two are parsed by completely independent readers and produce the identical verdict and rule set, which the evidence generator checks and states as a derived observation rather than as prose.",
+        "evidence": "evidence/xtts_coqui_feb2026"
+      }
+    ],
+    "limitations": [
+      {
+        "claim": "trainproof judges only what appears in a training log or configuration. It cannot observe model weights, activations, attention statistics or gradients, so failure modes visible only inside the training loop remain out of scope in 0.14.0. Checkpoint inspection is not implemented at this version.",
+        "evidence": "src/trainproof/adapters.py:parse_log_with_format_info"
+      },
+      {
+        "claim": "A PASS verdict means no mechanical failure was detected in the log, not that the run is good. A model trained on corrupted data can produce a healthy-looking loss curve; detecting that requires comparison against a known-good baseline with trainproof compare.",
+        "evidence": "src/trainproof/report.py"
+      },
+      {
+        "claim": "GPU-oriented rules only fire when the log carries the columns they need. HuggingFace trainer_state.json records no step time or loader time, so TP-STEP-CLIFF and TP-LOADER-BOUND cannot execute on a stock HuggingFace run and are reported as skipped with the reason. Coqui and TensorBoard logs carry timestamps, so TP-THROUGHPUT does execute there.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "The preflight surface at 0.14.0 lints datasets and tokenizers. It does not verify that a training stack can be imported, that a checkpoint deserialises, or that system memory will survive the first batch, so an environment that will crash on startup is not caught before the run begins.",
+        "evidence": "src/trainproof/preflight.py"
+      },
+      {
+        "claim": "TensorBoard event files are read without verifying their CRC footers, because crc32c is not in the Python standard library and adding a dependency to checksum a file that is only being read would contradict the zero-dependency guarantee. Records that fail to decode are skipped rather than reported as corruption.",
+        "evidence": "src/trainproof/tfevents.py"
+      },
+      {
+        "claim": "NOT-CHECKED reports that nothing could be measured; it is neither a pass nor a failure, and must not be recorded as an absence of problems.",
+        "evidence": "src/trainproof/epoch.py"
+      }
+    ]
+  },
+  "golden_qa": [
+    {
+      "question": "What changed in version 0.14.0?",
+      "answer": "0.14.0 adds a fifth log format, tfevents, which reads TensorBoard event files, and fixes one false positive. Before it, trainproof read HuggingFace trainer_state.json, Coqui text logs, JSONL and CSV. PyTorch Lightning, Fish Speech and most research training code write their scalars only to TensorBoard event files, so those runs had no readable log and trainproof could say nothing about them. No new rule was added: the existing 62 rules can now see runs they previously could not read. The fix is to TP-ZERO-GRAD, which no longer reports a severed backward graph on a run whose loss demonstrably improved."
+    },
+    {
+      "question": "Does trainproof require TensorFlow or TensorBoard to read TensorBoard event files?",
+      "answer": "No. The reader is written from the wire format - TFRecord framing plus the Event, Summary and TensorProto protobuf fields it needs - and imports no tensorflow, no tensorboard, no protobuf library, no torch and no numpy. Reading a log file should not require installing a training stack, so trainproof's zero-ML-dependency guarantee is unchanged at 0.14.0."
+    },
+    {
+      "question": "How do you know the TensorBoard reader is correct?",
+      "answer": "It is validated against the reference implementation rather than against itself. On a real 2049-step PyTorch Lightning run it reproduces tensorboard's own EventAccumulator byte-exact: all 13 scalar tags, every point count, and first and last values agreeing to within 1e-6 relative. Separately, a 125,000-step Coqui XTTS fine-tune ships as both a text log and the event file written by the same run; the two are parsed by completely independent code and produce the identical verdict and rule set, which the evidence generator checks at generation time."
+    },
+    {
+      "question": "Which training frameworks has trainproof been validated against?",
+      "answer": "Three at 0.14.0. HuggingFace Trainer is covered by the doomed-runs gallery - 6 configs across 3 seeds of Qwen2.5-3B-Instruct with 4-bit NF4 and LoRA r=16 over 300 steps - where each config breaks one knob deliberately. Coqui XTTS v2 and PyTorch Lightning via Fish Speech are covered by real fine-tunes on an RTX 5080 whose logs ship in evidence/. The gallery proves the rules fire; the real runs prove they survive contact with logs nobody wrote for trainproof."
+    },
+    {
+      "question": "What did trainproof find on the real runs shipped as evidence?",
+      "answer": "On the 125,000-step Coqui XTTS fine-tune it returns FAIL with TP-DIVERGE: the loss ended at 0.032 against a floor of 0.017, so the final checkpoint is not the best one. On the 2049-step Fish Speech LoRA fine-tune it returns WARN with TP-OVERFIT: evaluation loss bottomed out near step 99 at 9.23 and rose to 16.19 while training loss kept falling to 2.84, meaning the best checkpoint was early in the run. TP-THROUGHPUT also executes on both, measured from log timestamps, because Coqui and TensorBoard logs carry them."
+    },
+    {
+      "question": "Why did TP-ZERO-GRAD change in 0.14.0?",
+      "answer": "It was producing a false FAIL. The rule fired whenever every finite gradient norm was exactly 0.0 and reported that no gradient reached the weights. Coqui writes TrainEpochStats/avg_grad_norm as 0.0 when gradient clipping is off, so a healthy 125,000-step XTTS fine-tune whose loss reached 0.017 was condemned. A run cannot both learn and receive no gradient, so the check now stands down when the loss improved by more than the minimum-improvement threshold, recording the reason as a skip rather than a pass, and stays armed when the loss is stuck. The false positive was found by running the shipped rules against a real training run, not by a test."
+    },
+    {
+      "question": "Did 0.14.0 add any new rules or change the JSON contract?",
+      "answer": "No. There are 62 distinct TP-* rule IDs at 0.14.0, unchanged from 0.13.0, and schema_version remains 3 with the verdict enum unchanged at PASS, WARN, NOT-CHECKED and FAIL. 0.14.0 is a minor bump because it adds a capability - a log format - not because it breaks a contract."
+    },
+    {
+      "question": "How do you point trainproof at a TensorBoard run?",
+      "answer": "Pass the event file or the directory containing it, for example 'trainproof doctor results/my_run/tensorboard/version_0'. Format is auto-detected; --format tfevents forces it. A directory of shards is merged into a single series, and event files are discovered when a directory is scanned. An event file truncated by a killed run is read up to the cut rather than rejected, because a killed run is the one most in need of judging."
+    },
+    {
+      "question": "Are PyTorch Lightning console logs supported?",
+      "answer": "No, and deliberately. Lightning console output is a TTY dump with progress-bar control codes, not a log with a stable structure. The TensorBoard event file that Lightning writes alongside it is the real record of the run, and that is what trainproof reads."
+    },
+    {
+      "question": "Why can trainproof not fire its GPU rules on a HuggingFace run?",
+      "answer": "Because stock HuggingFace trainer_state.json records no step time and no loader time. TP-STEP-CLIFF and TP-LOADER-BOUND need those columns, so on a HuggingFace log they are reported as skipped with the reason stated rather than silently omitted. Coqui logs and TensorBoard event files do carry timestamps, so TP-THROUGHPUT executes there. What a run's log records determines which checks can run at all."
+    },
+    {
+      "question": "What does trainproof detect?",
+      "answer": "Mechanical failures visible in a training log: divergence, NaN and Inf losses, flatlined curves, dead runs that never improve, gradient spikes, all-zero gradients, zero or absent learning rates, overfitting where evaluation loss climbs while training loss falls, throughput and step-time anomalies, and regressions against a baseline run. It reports each finding with a stable TP-* identifier and the evidence that produced it."
+    },
+    {
+      "question": "What problem does trainproof solve?",
+      "answer": "Training runs fail silently. A run can diverge, flatline, overfit or receive no gradient at all while still printing plausible numbers for hours, and the cost is discovered only when the model is evaluated. trainproof reads the log a training framework already writes and returns a deterministic verdict with an exit code, so a broken run can be caught by a person or by CI while it still matters."
+    },
+    {
+      "question": "Can a single training run's loss curve detect a corrupted dataset?",
+      "answer": "No. A model trained on corrupted data can produce a perfectly healthy-looking loss curve, and trainproof says so explicitly in its own output. A PASS means no mechanical failure was detected in the log, not that the run is good. Detecting a run that is learning the wrong thing requires comparing it against a known-good baseline with trainproof compare."
+    },
+    {
+      "question": "What are trainproof's limitations?",
+      "answer": "It judges only what appears in a log or configuration - it cannot observe weights, activations, attention statistics or gradients, and it does not inspect checkpoints at 0.14.0. A PASS does not certify a good run. Rules whose columns are absent from a log cannot execute, and are reported as skipped with a reason. The preflight surface lints datasets and tokenizers but does not verify that a training stack can be imported, that a checkpoint deserialises, or that system memory will survive the first batch, so an environment that will crash on startup is not caught before the run begins. TensorBoard CRC footers are not verified, because checksumming a file being read is not worth a dependency."
+    },
+    {
+      "question": "Does trainproof require a GPU, an ML framework, or specific hardware?",
+      "answer": "No. It parses scalar metric records from log files and configuration, and runs with no ML framework, no network client and no telemetry. It needs no GPU and no access to the model. The TensorBoard reader added in 0.14.0 preserves this: it decodes the event format directly rather than importing the libraries that write it."
+    },
+    {
+      "question": "What commands does trainproof expose?",
+      "answer": "Seven: data and tokenizer for dataset and tokenizer preflight, preflight for LLM fine-tuning datasets, epoch for a first-epoch verdict, doctor for a zero-config autopsy of training logs (aliased as diagnose), compare to judge a run against a baseline, and watch as a live guardian that polls a log while training runs. They cover the phases before, during and after a run."
+    },
+    {
+      "question": "How is trainproof tested?",
+      "answer": "210 tests at 0.14.0, up from 179 at 0.13.0, collected with python -m pytest --collect-only -q. Golden snapshots act as a regression suite, contract tests assert that the rule identifiers in the source and in RULES.md match in both directions, and EVIDENCE_MATRIX.md is regenerated from the shipped logs so a drifted verdict fails rather than going unnoticed. The tfevents tests check the parser against tensorboard's own reader, against a real Lightning run, and against truncated and malformed files."
+    },
+    {
+      "question": "What Python versions does trainproof support?",
+      "answer": "Python 3.10 and later, declared as requires-python >=3.10 in pyproject.toml."
+    },
+    {
+      "question": "Is EVIDENCE_MATRIX.md written by hand?",
+      "answer": "No. It is generated by scripts/regenerate_evidence.py, and the file carries a header saying so. Every verdict in it is computed by running the shipped rules over the shipped logs at generation time, and the derived observations at the bottom - including the check that the two independent readers of the same XTTS run agree - are computed rather than asserted. It used to be maintained by hand and drifted, carrying verdicts from v0.3-dev long after the rules had changed."
+    }
+  ],
+  "generated_by": "release.ps1",
+  "generated_at": "2026-08-01T18:30:00Z"
+}

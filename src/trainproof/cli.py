@@ -118,7 +118,7 @@ def _run():
     # Epoch Command
     epoch_parser = subparsers.add_parser("epoch", help="First-epoch verdict from training logs.")
     epoch_parser.add_argument("logfile", type=str, help="Path to JSONL or CSV log file")
-    epoch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
+    epoch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv", "tfevents"], default="auto", help="Log format override")
     epoch_parser.add_argument("--map", action="append", help="Override log column mapping (e.g. loss=my_loss)")
     epoch_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
     epoch_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
@@ -128,7 +128,7 @@ def _run():
     doctor_parser = subparsers.add_parser("doctor", aliases=["diagnose"], help="Flagship zero-config autopsy of training logs.")
     doctor_parser.add_argument("path", type=str, nargs="?", default=".", help="Path to file or directory")
     doctor_parser.add_argument("--baseline", type=str, help="Additionally run compare against this baseline")
-    doctor_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override (file mode only)")
+    doctor_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv", "tfevents"], default="auto", help="Log format override (file mode only)")
     doctor_parser.add_argument("--map", action="append", help="Override log column mapping (e.g. loss=my_loss)")
     doctor_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
     doctor_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
@@ -137,7 +137,7 @@ def _run():
     compare_parser = subparsers.add_parser("compare", help="Compare a run log against a baseline log.")
     compare_parser.add_argument("baseline", type=str, help="Path to baseline log file")
     compare_parser.add_argument("runs", type=str, nargs="+", help="Path to one or more run log files")
-    compare_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
+    compare_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv", "tfevents"], default="auto", help="Log format override")
     compare_parser.add_argument("--map", action="append", help="Override log column mapping")
     compare_parser.add_argument("--json", action="store_true", help="Output JSON instead of human-readable text")
     compare_parser.add_argument("--sarif", type=str, metavar="PATH", help="Also write a SARIF 2.1.0 file for GitHub code scanning")
@@ -146,7 +146,7 @@ def _run():
     watch_parser = subparsers.add_parser("watch", help="Live guardian: poll a training log.")
     watch_parser.add_argument("logfile", type=str, help="Path to run log file")
     watch_parser.add_argument("--interval", type=int, default=10, help="Polling interval in seconds")
-    watch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv"], default="auto", help="Log format override")
+    watch_parser.add_argument("--format", choices=["auto", "hf", "coqui", "jsonl", "csv", "tfevents"], default="auto", help="Log format override")
     watch_parser.add_argument("--map", action="append", help="Override log column mapping")
     watch_parser.add_argument("--until-fail", action="store_true", help="Exit with code 1 as soon as verdict becomes FAIL")
     watch_parser.add_argument("--stall-timeout", type=int, default=300, help="Seconds of no log growth before warning of a stall")
@@ -198,7 +198,8 @@ def _run():
         elif path.is_dir():
             for p in path.rglob("*"):
                 if not p.is_file(): continue
-                if p.name == "trainer_state.json" or p.suffix in (".jsonl", ".csv", ".log", ".txt"):
+                if (p.name == "trainer_state.json" or "tfevents" in p.name
+                        or p.suffix in (".jsonl", ".csv", ".log", ".txt")):
                     try:
                         records, *_ = parse_log_with_format_info(p, fmt="auto", mapping_overrides=mapping_overrides)
                         if len(records) >= 3:

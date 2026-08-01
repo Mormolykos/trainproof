@@ -1,0 +1,131 @@
+[2026-02-27 17:27:43,786][__main__][INFO] - [rank: 0] Instantiating datamodule <fish_speech.datasets.semantic.SemanticDataModule>
+[2026-02-27 17:27:43,838][datasets][INFO] - PyTorch version 2.12.0.dev20260226+cu128 available.
+[2026-02-27 17:27:44,926][__main__][INFO] - [rank: 0] Instantiating model <fish_speech.models.text2semantic.lit_module.TextToSemantic>
+[2026-02-27 17:27:50,262][__main__][INFO] - [rank: 0] Instantiating callbacks...
+[2026-02-27 17:27:50,262][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.ModelCheckpoint>
+[2026-02-27 17:27:50,266][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.ModelSummary>
+[2026-02-27 17:27:50,267][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.LearningRateMonitor>
+[2026-02-27 17:27:50,267][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <fish_speech.callbacks.GradNormMonitor>
+[2026-02-27 17:27:50,277][__main__][INFO] - [rank: 0] Instantiating loggers...
+[2026-02-27 17:27:50,278][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating logger <lightning.pytorch.loggers.tensorboard.TensorBoardLogger>
+[2026-02-27 17:27:50,280][__main__][INFO] - [rank: 0] Instantiating trainer <lightning.pytorch.trainer.Trainer>
+[2026-02-27 17:27:50,313][__main__][INFO] - [rank: 0] Logging hyperparameters!
+[2026-02-27 17:27:50,377][__main__][INFO] - [rank: 0] Starting training!
+[2026-02-27 17:27:50,473][fish_speech.utils.utils][ERROR] - [rank: 0] 
+Traceback (most recent call last):
+  File "C:\Users\User\Desktop\fish-speech\fish_speech\utils\utils.py", line 69, in wrap
+    metric_dict, object_dict = task_func(cfg=cfg)
+  File "C:\Users\User\Desktop\fish-speech\fish_speech\train.py", line 110, in train
+    trainer.fit(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\trainer.py", line 584, in fit
+    call._call_and_handle_interrupt(
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\call.py", line 48, in _call_and_handle_interrupt
+    return trainer.strategy.launcher.launch(trainer_fn, *args, trainer=trainer, **kwargs)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\strategies\launchers\subprocess_script.py", line 105, in launch
+    return function(*args, **kwargs)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\trainer.py", line 630, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\trainer.py", line 1033, in _run
+    self.strategy.setup_environment()
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\strategies\ddp.py", line 155, in setup_environment
+    self.setup_distributed()
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\strategies\ddp.py", line 207, in setup_distributed
+    _init_dist_connection(self.cluster_environment, self._process_group_backend, **kwargs)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\fabric\utilities\distributed.py", line 283, in _init_dist_connection
+    torch.distributed.init_process_group(torch_distributed_backend, rank=global_rank, world_size=world_size, **kwargs)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\distributed\c10d_logger.py", line 83, in wrapper
+    return func(*args, **kwargs)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\distributed\c10d_logger.py", line 97, in wrapper
+    func_return = func(*args, **kwargs)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\distributed\distributed_c10d.py", line 1845, in init_process_group
+    default_pg, _ = _new_process_group_helper(
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\distributed\distributed_c10d.py", line 2111, in _new_process_group_helper
+    raise RuntimeError("Distributed package doesn't have NCCL built in")
+RuntimeError: Distributed package doesn't have NCCL built in
+[2026-02-27 17:27:50,486][fish_speech.utils.utils][INFO] - [rank: 0] Output dir: results/text2semantic_finetune_dual_ar
+[2026-02-27 17:30:24,497][__main__][INFO] - [rank: 0] Instantiating datamodule <fish_speech.datasets.semantic.SemanticDataModule>
+[2026-02-27 17:30:24,516][datasets][INFO] - PyTorch version 2.12.0.dev20260226+cu128 available.
+[2026-02-27 17:30:25,457][__main__][INFO] - [rank: 0] Instantiating model <fish_speech.models.text2semantic.lit_module.TextToSemantic>
+[2026-02-27 17:30:30,728][__main__][INFO] - [rank: 0] Instantiating callbacks...
+[2026-02-27 17:30:30,728][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.ModelCheckpoint>
+[2026-02-27 17:30:30,731][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.ModelSummary>
+[2026-02-27 17:30:30,731][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.LearningRateMonitor>
+[2026-02-27 17:30:30,732][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <fish_speech.callbacks.GradNormMonitor>
+[2026-02-27 17:30:30,733][__main__][INFO] - [rank: 0] Instantiating loggers...
+[2026-02-27 17:30:30,733][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating logger <lightning.pytorch.loggers.tensorboard.TensorBoardLogger>
+[2026-02-27 17:30:30,735][__main__][INFO] - [rank: 0] Instantiating trainer <lightning.pytorch.trainer.Trainer>
+[2026-02-27 17:30:30,767][__main__][INFO] - [rank: 0] Logging hyperparameters!
+[2026-02-27 17:30:30,826][__main__][INFO] - [rank: 0] Starting training!
+[2026-02-27 17:30:32,797][fish_speech.models.text2semantic.lit_module][INFO] - [rank: 0] Set weight decay: 0 for 164 parameters
+[2026-02-27 17:30:32,798][fish_speech.models.text2semantic.lit_module][INFO] - [rank: 0] Set weight decay: 0.0 for 123 parameters
+[2026-02-27 17:30:55,062][fish_speech.utils.utils][ERROR] - [rank: 0] 
+Traceback (most recent call last):
+  File "C:\Users\User\Desktop\fish-speech\fish_speech\utils\utils.py", line 69, in wrap
+    metric_dict, object_dict = task_func(cfg=cfg)
+  File "C:\Users\User\Desktop\fish-speech\fish_speech\train.py", line 110, in train
+    trainer.fit(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\trainer.py", line 584, in fit
+    call._call_and_handle_interrupt(
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\call.py", line 49, in _call_and_handle_interrupt
+    return trainer_fn(*args, **kwargs)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\trainer.py", line 630, in _fit_impl
+    self._run(model, ckpt_path=ckpt_path, weights_only=weights_only)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\trainer.py", line 1079, in _run
+    results = self._run_stage()
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\trainer.py", line 1121, in _run_stage
+    self._run_sanity_check()
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\trainer\trainer.py", line 1150, in _run_sanity_check
+    val_loop.run()
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\loops\utilities.py", line 179, in _decorator
+    return loop_run(self, *args, **kwargs)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\loops\evaluation_loop.py", line 139, in run
+    batch, batch_idx, dataloader_idx = next(data_fetcher)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\loops\fetchers.py", line 134, in __next__
+    batch = super().__next__()
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\loops\fetchers.py", line 61, in __next__
+    batch = next(self.iterator)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\utilities\combined_loader.py", line 341, in __next__
+    out = next(self._iterator)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\lightning\pytorch\utilities\combined_loader.py", line 142, in __next__
+    out = next(self.iterators[0])
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\utils\data\dataloader.py", line 741, in __next__
+    data = self._next_data()
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\utils\data\dataloader.py", line 1548, in _next_data
+    return self._process_data(data, worker_id)
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\utils\data\dataloader.py", line 1586, in _process_data
+    data.reraise()
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\_utils.py", line 785, in reraise
+    raise exception
+ValueError: Caught ValueError in DataLoader worker process 0.
+Original Traceback (most recent call last):
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\utils\data\_utils\worker.py", line 374, in _worker_loop
+    data = fetcher.fetch(index)  # type: ignore[possibly-undefined]
+  File "C:\Users\User\miniconda3\envs\fish\lib\site-packages\torch\utils\data\_utils\fetch.py", line 35, in fetch
+    data.append(next(self.dataset_iter))
+  File "C:\Users\User\Desktop\fish-speech\fish_speech\datasets\semantic.py", line 116, in __iter__
+    yield self.augment()
+  File "C:\Users\User\Desktop\fish-speech\fish_speech\datasets\semantic.py", line 253, in augment
+    response = self.sample_data()
+  File "C:\Users\User\Desktop\fish-speech\fish_speech\datasets\semantic.py", line 159, in sample_data
+    self.init_mock_data_server()
+  File "C:\Users\User\Desktop\fish-speech\fish_speech\datasets\semantic.py", line 133, in init_mock_data_server
+    raise ValueError(f"{i} is not a file or directory")
+ValueError: data\protos_val\* is not a file or directory
+
+[2026-02-27 17:30:55,073][fish_speech.utils.utils][INFO] - [rank: 0] Output dir: results/text2semantic_finetune_dual_ar
+[2026-02-27 17:32:31,096][__main__][INFO] - [rank: 0] Instantiating datamodule <fish_speech.datasets.semantic.SemanticDataModule>
+[2026-02-27 17:32:31,114][datasets][INFO] - PyTorch version 2.12.0.dev20260226+cu128 available.
+[2026-02-27 17:32:32,052][__main__][INFO] - [rank: 0] Instantiating model <fish_speech.models.text2semantic.lit_module.TextToSemantic>
+[2026-02-27 17:32:37,309][__main__][INFO] - [rank: 0] Instantiating callbacks...
+[2026-02-27 17:32:37,309][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.ModelCheckpoint>
+[2026-02-27 17:32:37,312][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.ModelSummary>
+[2026-02-27 17:32:37,312][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <lightning.pytorch.callbacks.LearningRateMonitor>
+[2026-02-27 17:32:37,312][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating callback <fish_speech.callbacks.GradNormMonitor>
+[2026-02-27 17:32:37,315][__main__][INFO] - [rank: 0] Instantiating loggers...
+[2026-02-27 17:32:37,315][fish_speech.utils.instantiators][INFO] - [rank: 0] Instantiating logger <lightning.pytorch.loggers.tensorboard.TensorBoardLogger>
+[2026-02-27 17:32:37,317][__main__][INFO] - [rank: 0] Instantiating trainer <lightning.pytorch.trainer.Trainer>
+[2026-02-27 17:32:37,349][__main__][INFO] - [rank: 0] Logging hyperparameters!
+[2026-02-27 17:32:37,407][__main__][INFO] - [rank: 0] Starting training!
+[2026-02-27 17:32:38,094][fish_speech.models.text2semantic.lit_module][INFO] - [rank: 0] Set weight decay: 0 for 164 parameters
+[2026-02-27 17:32:38,094][fish_speech.models.text2semantic.lit_module][INFO] - [rank: 0] Set weight decay: 0.0 for 123 parameters
+[2026-02-27 20:12:00,504][fish_speech.utils.utils][INFO] - [rank: 0] Output dir: results/text2semantic_finetune_dual_ar

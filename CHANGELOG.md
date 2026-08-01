@@ -4,6 +4,25 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.14.0] — 2026-08-01 — the third-framework release
+
+Every rule shipped so far had only ever been tested against HuggingFace `trainer_state.json` files. PyTorch Lightning, Fish Speech and most research code write their metrics to TensorBoard event files and nowhere else, so those runs were invisible: a Lightning run could overfit for three hours and trainproof had nothing to read. This release adds the missing reader and validates the rules against real runs from two more frameworks.
+
+### Added
+- **`tfevents` format**: a TensorBoard event-file reader written from the wire format — TFRecord framing plus the `Event`/`Summary`/`TensorProto` protobuf fields it needs. It imports no tensorflow, no tensorboard, no protobuf, no torch, and no numpy; trainproof's dependency-free guarantee is unchanged. Validated byte-exact against `tensorboard.backend.event_processing.EventAccumulator` on a real 2049-step Lightning run: all 13 tags, all point counts, all values.
+- Scalars logged as rank-0 tensors are decoded as well as `simple_value`. Lightning uses the former, so a reader handling only the latter sees an empty run.
+- Tag normalisation across frameworks: `train/loss`, `TrainIterStats/loss` and `training/loss` all resolve to `loss`; `val/loss` and `EvalStats/avg_loss` to `eval_loss`; `lr-AdamW/pg1` and `TrainIterStats/current_lr` to `lr`.
+- When several tags claim one column — Coqui logs both `TrainIterStats/loss` per step and `TrainEpochStats/avg_loss` per epoch — the denser series wins, ties broken alphabetically so the choice is deterministic.
+- `--format tfevents` on `epoch`, `doctor`, `compare` and `watch`; `auto` detects event files by name. Directory arguments now discover event files, and a directory of shards is merged into one series.
+- Truncated event files — the normal state of a killed run — are read up to the cut instead of raising. A killed run is the run most in need of judging.
+- `evidence/`: the real logs behind the claims above. A 125,000-step Coqui XTTS fine-tune (text log and event file from the same run) and a 2049-step Fish Speech LoRA fine-tune, both on an RTX 5080.
+
+### Fixed
+- **`TP-ZERO-GRAD` false positive.** The rule fired whenever every finite gradient norm was exactly `0.0`, and reported a severed backward graph. Coqui writes `TrainEpochStats/avg_grad_norm` as `0.0` when clipping is off, so a healthy 125k-step XTTS run whose loss reached `0.017` was reported **FAIL**. A run cannot both learn and receive no gradient: the check now stands down when the loss improved by more than `MIN_LOSS_IMPROVEMENT`, recording the reason as a skip, and stays armed when the loss is stuck. Found by running the shipped rules against a real run — not by a test.
+
+### Notes
+- `EVIDENCE_MATRIX.md` gains a cross-framework section, derived like the rest of the file: verdicts are computed from the evidence logs at generation time, including a check that the two independent readers of the same XTTS run agree.
+
 ## [0.13.0] — 2026-07-31 — the honest-silence release
 
 A log that carries a loss column but executes zero check groups returned PASS with exit 0. "Checked and clean" and "nothing could be checked" shared one verdict. This release separates them so CI can tell them apart.

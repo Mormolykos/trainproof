@@ -310,11 +310,25 @@ data.
 
 - HuggingFace Trainer (`trainer_state.json`)
 - Coqui Trainer text logs (ANSI-colored `trainer_0_log.txt`)
+- TensorBoard event files (`events.out.tfevents.*`) — PyTorch Lightning, Fish
+  Speech, Coqui, and anything else that writes scalars to TensorBoard
 - Generic JSONL / CSV (columns: step, loss, lr, grad_norm, time — all optional)
 
-Auto-detected; override with `--format hf|coqui|jsonl|csv`. TensorBoard event
-files are planned (Lightning console captures are TTY dumps, not logs, and
-will not be supported).
+Auto-detected; override with `--format hf|coqui|tfevents|jsonl|csv`. Point it at
+a file or a directory:
+
+```bash
+trainproof doctor results/my_run/tensorboard/version_0
+```
+
+The event reader is written from the wire format and imports no tensorflow,
+tensorboard, protobuf, torch or numpy — reading a log file should not require
+installing a training stack. It is validated byte-exact against TensorBoard's
+own `EventAccumulator` (see `evidence/`). A directory of shards is merged, and a
+file truncated by a killed run is read up to the cut rather than rejected.
+
+Lightning console captures remain unsupported: they are TTY dumps, not logs.
+The event file written beside them is the real record, and that is what to pass.
 
 ## For AI coding agents
 

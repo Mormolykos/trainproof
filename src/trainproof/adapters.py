@@ -186,6 +186,14 @@ def parse_log_with_format_info(path: str | Path, fmt: str = "auto", mapping_over
     if not path.exists():
         raise FileNotFoundError(f"Log file not found: {path}")
 
+    # tfevents is binary and may be a directory of shards, so it is resolved
+    # before anything tries to decode the path as text.
+    from .tfevents import is_tfevents, parse_tfevents
+
+    if fmt == "tfevents" or (fmt == "auto" and is_tfevents(path)):
+        records, mapping = parse_tfevents(path, mapping_overrides)
+        return records, "tfevents", mapping, {}
+
     text = path.read_text(encoding="utf-8", errors="ignore").strip()
 
     if fmt == "auto":
