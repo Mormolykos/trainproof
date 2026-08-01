@@ -60,6 +60,10 @@
       {
         "claim": "All four output surfaces render the new verdict consistently: console prints [NOT-CHECKED] from an explicit branch, the doctor autopsy counts line gained a fourth category, SARIF maps NOT-CHECKED to 'warning' so it cannot render in a pull request identically to a passing check, and the HTML report carries .level-NOT-CHECKED and .stat.not-checked styling.",
         "evidence": "src/trainproof/report.py"
+      },
+      {
+        "claim": "TP-ZERO-GRAD (FAIL) detects a gradient-norm series that is exactly 0.0 on every finite step - the log signature of a severed backward graph, usually reentrant gradient checkpointing over frozen input embeddings with PEFT adapters deeper in the block. It uses exact equality rather than a threshold, because a very small gradient is real convergence. TP-ZERO-LOSS is its counterpart for an all-zero loss series, whose usual cause is every target label masked to -100 by the collator.",
+        "evidence": "src/trainproof/epoch.py"
       }
     ],
     "architecture_facts": [
@@ -82,6 +86,10 @@
       {
         "claim": "The HuggingFace TrainerCallback acts only on a FAIL verdict, so NOT-CHECKED does not surface during a run's warm-up steps when too few points exist for any group to execute.",
         "evidence": "src/trainproof/integrations/hf.py"
+      },
+      {
+        "claim": "Exactly three log formats are parsed: HuggingFace trainer_state.json, Coqui trainer text logs, and generic JSONL/CSV, with automatic format detection and per-field mapping overrides. TensorBoard event files are NOT read at this version - the TensorBoard adapter is deferred on the roadmap and gated on a real user request. Weights & Biases and other proprietary APIs are never read directly; users export to CSV and feed that.",
+        "evidence": "src/trainproof/adapters.py"
       }
     ],
     "limitations": [
@@ -100,6 +108,10 @@
       {
         "claim": "Partial zero-loss is still not detected. TP-ZERO-LOSS requires every finite loss to be exactly 0.0; a run where only some steps collapse to zero is not flagged as such. Disclosed in ROADMAP.md rather than fixed, because the decision rule requires a real gallery fixture before a rule ships.",
         "evidence": "ROADMAP.md"
+      },
+      {
+        "claim": "The fault-injection evidence is narrow in breadth. All eighteen injected runs are one model family on a single dataset - Qwen2.5-3B QLoRA on an Alpaca-cleaned slice - so the gallery demonstrates that each rule fires on a real run, not that thresholds generalise across architectures. The only failure that broke on its own rather than by injection is a single Coqui XTTS v2 fine-tune. Breadth across architectures and training styles is a known gap, not a validated claim.",
+        "evidence": "EVIDENCE_MATRIX.md"
       }
     ]
   },
