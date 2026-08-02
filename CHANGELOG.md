@@ -4,6 +4,21 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.16.0] — 2026-08-02 — the rule registry (no behaviour change)
+
+Every single-run rule lived inside one function, `check_records()`. Adding a rule meant editing the body of several hundred lines that also computed the statistics every other rule depended on, so each new check raised the risk to the checks already there. That was the project's main structural bottleneck and it was blocking the checkpoint work planned next.
+
+**No rule, threshold, verdict or output changed.** That claim is not asserted, it is enforced: all 38 golden snapshots are byte-identical to 0.15.0, `scripts/regenerate_evidence.py --check` exits 0, and the same 228 tests pass unmodified. A refactor of judging logic that cannot prove it changed nothing is indistinguishable from a silent regression, which is why the snapshots exist.
+
+### Changed
+- Each single-run rule is now a standalone function taking a `CheckContext` and returning findings. The context computes the shared series once — losses, gradient norms, learning rates, step times, eval losses, loader fractions — so no rule recomputes what another already derived, and a rule can be read, tested and reasoned about without reading the ones around it.
+- `check_records()` is now composition rather than implementation: it builds the context and runs the registry in order. Evaluation order is preserved exactly, because the goldens encode the sequence findings appear in.
+- The `checks.ran` / `checks.skipped` bookkeeping moved onto the context. Every skip reason string is unchanged, character for character, since those strings are asserted in tests and appear in golden output.
+
+### Notes
+- 84 rule IDs and 228 tests, both unchanged. `schema_version` remains 3.
+- Deliberately shipped alone. Mixing a behaviour-preserving refactor with a new check would destroy the only evidence that the refactor preserved behaviour.
+
 ## [0.15.0] — 2026-08-01 — the before-the-GPU release
 
 Every check in trainproof until now reads a log, which means the run already started and the hours are already spent. The failures that cost the most never reach a log at all: a stack that will not import, a checkpoint that cannot be deserialised, a first batch that exhausts system RAM and freezes the desktop. All three happened to the author in a single day on a run that never logged one step. This release checks them before the GPU is touched.
