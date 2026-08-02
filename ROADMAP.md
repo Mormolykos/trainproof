@@ -4,11 +4,11 @@ The official product roadmap. **Every future feature decision is evaluated
 against this document.** If a proposed feature is not on the roadmap and is not
 justified by the decision rule below, it does not ship.
 
-Updated 2026-08-01, after shipping v0.15 (environment preflight). The previous
-revision of this file still described v0.8 as current, seven releases after the
-fact — recorded here because a roadmap that drifts is the same failure this
-project exists to catch, and because `EVIDENCE_MATRIX.md` is generated precisely
-so it cannot happen to the evidence.
+Updated 2026-08-02, after shipping v0.17 (lint gate). An earlier revision still
+described v0.8 as current, seven releases after the fact — recorded here because
+a roadmap that drifts is the same failure this project exists to catch, and
+because `EVIDENCE_MATRIX.md` is generated precisely so it cannot happen to the
+evidence.
 
 ---
 
@@ -29,10 +29,10 @@ A feature ships only if all of these hold:
 
 ---
 
-## Current state — v0.15 (shipped)
+## Current state — v0.17 (shipped)
 
 Eight commands covering all three phases of a run, 84 stable rule IDs,
-228 tests, `schema_version` 3.
+230 tests, zero lint findings, `schema_version` 3.
 
 **Before the run**
 
@@ -100,6 +100,8 @@ computes that agreement rather than asserting it.
 | v0.13 | third state | `NOT-CHECKED` — "nothing could be checked" ≠ "checked and clean" |
 | v0.14 | third framework | TensorBoard reader, zero dependencies; `TP-ZERO-GRAD` false positive fixed |
 | v0.15 | before the GPU | environment preflight: import, checkpoint, RAM, disk |
+| v0.16 | rule registry | rules extracted behind a registry; 38 goldens byte-identical |
+| v0.17 | lint gate | ruff in the release ritual; a log that could vanish from a report, fixed |
 
 Two things landed **better** than this roadmap planned. The TensorBoard adapter
 was scheduled for v1.0 as an optional `[tb]` extra; it shipped in v0.14 with **no
@@ -111,7 +113,7 @@ positive on somebody's real training.
 
 ---
 
-## v0.16 — checkpoint tensors (next)
+## v0.18 — checkpoint tensors (next)
 
 v0.15 proved a checkpoint can be inspected without executing it. The archive it
 already opens also contains the tensor storages, so the same ZIP read answers
@@ -127,6 +129,15 @@ questions that currently require loading the model:
 Why it qualifies under the decision rule: deterministic, evidence exists on
 disk (real 5.6 GB XTTS and 4.8 GB Fish checkpoints), dogfoodable, and the
 failure it prevents is a resume that silently discards optimizer state.
+
+The fixtures and a torch **oracle** already ship in `evidence/ckpt_fixtures/`:
+seven small checkpoints with known NaN counts, dead tensors, a missing optimizer
+state and mixed dtypes, plus `oracle.json` recording what torch reports after
+unpickling. The reader must reproduce that exactly while never unpickling —
+the same method that made the TensorBoard reader defensible in v0.14. The set
+has already earned itself: `layer1.bias` is all-zero in *every* fixture,
+including the clean one, because a zero-initialised bias is normal — so a naive
+dead-tensor rule would FAIL a healthy checkpoint before it ever shipped.
 
 **The safety property is the differentiator.** `torch.load` unpickles, and
 unpickling executes arbitrary code — a documented RCE vector, and the reason
@@ -155,7 +166,9 @@ Still required for 1.0:
 - **`[tool.trainproof]` config in `pyproject.toml`** — select/ignore rules by id,
   per-project threshold overrides. CI teams will not adopt a linter they cannot
   tune per-repo. Planned for v0.10 and never built.
-- **A lint gate** (see known gaps).
+
+The lint gate, listed here until v0.17, is done: ruff runs inside `release.ps1`
+with a ruleset pinned in `pyproject.toml`.
 
 v1.0 is the Show HN moment — a year of evidence behind it.
 
@@ -217,23 +230,43 @@ going deeper (tensor/tokenizer level, full lifecycle) rather than text-only.
    samples — is not flagged. The `TP-ZERO-LR` / `TP-ZERO-LR-PARTIAL` pair is the
    precedent. Needs a gallery fixture first, per the decision rule.
 
-3. **`cli.py` still has one `try/except/pass` in `doctor`'s candidate
-   discovery.** The handler that swallowed a failed baseline comparison was
-   fixed in v0.12.0 (`TP-CMP-ERROR`); this one silently drops a file during the
-   directory walk, before any log is judged. Lower impact — an undiscovered file
-   never enters the report — but the same class.
+3. ~~**`cli.py` still has one `try/except/pass` in `doctor`'s candidate
+   discovery.**~~ **FIXED in v0.17.0.** It was worse than this entry described:
+   the swallowed file never became a candidate, so it also never reached the
+   "could not be parsed and were NOT judged" note that the judging pass already
+   emitted. A log visible on disk could therefore be absent from the report and
+   indistinguishable from one that passed. Both passes now feed the same note,
+   and the regression test was verified to fail without the fix before it was
+   kept.
 
-4. **Repo-wide lint is unconfigured.** No `[tool.ruff]` section in
-   `pyproject.toml`, ruff is not a dependency, and lint has never been part of
-   the gate. Running it with an inherited config reports ~79 findings, almost
-   all import ordering, unused unpacked variables, and the blind-except pattern.
-   Adopting a lint gate is a decision to take deliberately, on its own, and never
-   inside a correctness release.
+4. ~~**Repo-wide lint is unconfigured.**~~ **FIXED in v0.17.0.** `[tool.ruff]`
+   is pinned in `pyproject.toml`, ruff is a `dev` extra, and the gate runs
+   inside `release.ps1`. The ruleset is chosen rather than inherited and every
+   exclusion carries its reason: `BLE001` off because broad excepts are
+   deliberate here (`S110` enforced instead), `PLW1510` off because `check=True`
+   is the opposite of the required behaviour, `E501` off because most long lines
+   are evidence strings encoded byte-for-byte in the goldens.
 
 5. **TensorBoard CRC footers are not verified.** `crc32c` is not in the standard
    library, and adding a dependency to checksum a file that is only being read
    would contradict the zero-dependency guarantee. A record that fails to decode
    is skipped rather than reported as corruption. *(v0.14)*
+
+6. **`cli.py` concentrates too many responsibilities.** Argument parsing,
+   command dispatch, JSON assembly, SARIF invocation and terminal rendering all
+   live in one module, and `_run()` is long enough that every new flag collides
+   with every other. Splitting subcommands into their own modules is the obvious
+   fix and is deliberately **not** urgent: unlike `epoch.py`, the volume here is
+   argparse boilerplate rather than judging logic, so the risk it carries per
+   line is low. Do it when a command is added, not before.
+
+7. **Structured models were considered for reports and findings, and refused.**
+   Replacing the plain dicts with dataclasses or Pydantic would make the code
+   self-documenting and prevent key typos. It is rejected because those dicts
+   *are* `schema_version` 3 — the published contract that `CONTRACTS.md`
+   guarantees. Inserting a model layer between the rules and the emitted JSON
+   has exactly two possible outcomes: no observable change, or a broken promise.
+   Recorded here so the idea is not re-proposed as an improvement.
 
 ---
 
