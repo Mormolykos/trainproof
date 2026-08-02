@@ -1,10 +1,12 @@
-import sys
 import json
-import pytest
+import sys
 from unittest.mock import patch
-from pathlib import Path
+
+import pytest
+
 import trainproof
 import trainproof.cli as cli
+
 
 @pytest.fixture
 def run_cli():
@@ -20,7 +22,7 @@ def run_cli():
 def test_version_flag(run_cli, capsys):
     code = run_cli("--version")
     assert code == 0
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     assert trainproof.__version__ in out
 
 def test_doctor_file_mode(tmp_path, run_cli, capsys):
@@ -29,7 +31,7 @@ def test_doctor_file_mode(tmp_path, run_cli, capsys):
     
     code = run_cli("doctor", str(log_file))
     assert code == 0
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     assert "FILE   :" in out
     assert "VERDICT: PASS" in out
     assert "What this cannot tell you" in out
@@ -54,7 +56,7 @@ def test_doctor_directory_discovery(tmp_path, run_cli, capsys):
     
     code = run_cli("doctor", str(tmp_path))
     assert code == 1 # because bad.jsonl is a flatline failure
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     
     # 3 logs discovered
     assert "SUMMARY" in out
@@ -68,7 +70,7 @@ def test_doctor_directory_discovery(tmp_path, run_cli, capsys):
 def test_doctor_zero_logs(tmp_path, run_cli, capsys):
     code = run_cli("doctor", str(tmp_path))
     assert code == 2
-    out, err = capsys.readouterr()
+    _out, err = capsys.readouterr()
     # v0.10: "cannot judge" messages go to stderr so stdout stays parseable
     assert "no readable training logs found" in err
 
@@ -82,7 +84,7 @@ def test_compare_n_way(tmp_path, run_cli, capsys):
     
     code = run_cli("compare", str(base), str(run1), str(run2))
     assert code == 1
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     
     # Table should be printed
     assert "RUN" in out and "VERDICT vs BASE" in out
@@ -101,7 +103,7 @@ def test_compare_backward_compat(tmp_path, run_cli, capsys):
     
     code = run_cli("compare", str(base), str(run1))
     assert code == 0
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     
     # Detailed output should be present
     assert "TRAINPROOF VERDICT" in out

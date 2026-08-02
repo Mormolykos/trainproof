@@ -1,11 +1,13 @@
-import time
-import sys
 import os
+import sys
+import time
 from datetime import datetime
 from pathlib import Path
+
 from .adapters import parse_log_with_format
 from .epoch import check_records
 from .report import print_verdict_console
+
 
 def poll_once(path: str | Path, fmt: str, prev_verdict: str | None) -> tuple[str | None, bool, int]:
     try:
@@ -63,7 +65,7 @@ def watch_loop(path: str | Path, interval: int = 10, fmt: str = "auto", until_fa
                     print_verdict_console("WARN", [{"id": "TP-STALL", "level": "WARN", "message": f"No log growth for {stall_timeout}s - training may be stalled.", "evidence": ""}])
                     stall_warned = True
 
-            verdict, changed, n = poll_once(path, fmt, prev_verdict)
+            verdict, _changed, _n = poll_once(path, fmt, prev_verdict)
             if verdict is not None:
                 prev_verdict = verdict
             

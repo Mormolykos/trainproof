@@ -1,11 +1,13 @@
 import json
-import pytest
-from pathlib import Path
-from trainproof.epoch import check_records
-from trainproof.compare import check_compare
-from trainproof.cli import main as cli_main
 import sys
+from pathlib import Path
 from unittest.mock import patch
+
+import pytest
+
+from trainproof.cli import main as cli_main
+from trainproof.epoch import check_records
+
 
 def test_loss_vs_eval_loss_separation():
     # loss=0.5 healthy, eval_loss extreme
@@ -45,7 +47,7 @@ def test_cli_map_works_end_to_end(tmp_path, capsys):
         except SystemExit as e:
             assert e.code == 0
             
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     assert "TP-PASS" in out
 
 def test_rule_ids_literal_in_output(tmp_path, capsys):
@@ -56,7 +58,7 @@ def test_rule_ids_literal_in_output(tmp_path, capsys):
             cli_main()
         except SystemExit:
             pass
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     assert "TP-DIVERGE" in out
 
 def test_json_output(tmp_path, capsys):
@@ -67,7 +69,7 @@ def test_json_output(tmp_path, capsys):
             cli_main()
         except SystemExit:
             pass
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     data = json.loads(out)
     assert "schema_version" in data
     assert "trainproof_version" in data
@@ -116,7 +118,7 @@ def test_gallery_regression(capsys):
             cli_main()
         except SystemExit:
             pass
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     data = json.loads(out)
     
     verdicts = {}

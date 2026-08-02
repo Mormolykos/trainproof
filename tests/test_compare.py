@@ -1,6 +1,7 @@
-import pytest
 from pathlib import Path
+
 from trainproof.compare import check_compare
+
 
 def get_gallery_log(name: str) -> str:
     path = Path(__file__).parent.parent / "examples" / "gallery" / name / "trainer_state.json"

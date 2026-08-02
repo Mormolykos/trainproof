@@ -1,6 +1,7 @@
 import math
 from pathlib import Path
 from typing import Any
+
 from . import rules
 from .adapters import parse_log_with_format
 
@@ -58,7 +59,7 @@ class CheckContext:
                 self.times.append(t)
                 self.time_steps.append(step)
 
-        self.valid_losses = [l for l in self.losses if not math.isnan(l) and not math.isinf(l)]
+        self.valid_losses = [v for v in self.losses if not math.isnan(v) and not math.isinf(v)]
         self.valid_gns = [g for g in self.grad_norms if not math.isnan(g) and not math.isinf(g)]
         
         self.eval_losses = []
@@ -94,7 +95,7 @@ class CheckContext:
 
 
 def check_nan(ctx: CheckContext) -> list[dict]:
-    nan_steps = [s for s, l in zip(ctx.loss_steps, ctx.losses) if math.isnan(l) or math.isinf(l)]
+    nan_steps = [s for s, v in zip(ctx.loss_steps, ctx.losses, strict=False) if math.isnan(v) or math.isinf(v)]
     if nan_steps:
         return [{"id": "TP-NAN", "level": "FAIL", "message": "NaN or Inf detected in loss.", "evidence": f"Steps: {nan_steps[:5]}..."}]
     return []
@@ -102,7 +103,7 @@ def check_nan(ctx: CheckContext) -> list[dict]:
 def check_zero_loss(ctx: CheckContext) -> list[dict]:
     if len(ctx.valid_losses) >= rules.MIN_POINTS_FOR_DEGENERATE_CHECK:
         ctx.ok("zero-loss")
-        if all(l == 0.0 for l in ctx.valid_losses):
+        if all(v == 0.0 for v in ctx.valid_losses):
             return [{
                 "id": "TP-ZERO-LOSS",
                 "level": "FAIL",
@@ -123,7 +124,7 @@ def check_flat_loss(ctx: CheckContext) -> list[dict]:
         ctx.no("flat-loss", "every logged loss is NaN or Inf")
         return []
     mean_loss = sum(ctx.valid_losses) / len(ctx.valid_losses)
-    std_loss = math.sqrt(sum((l - mean_loss)**2 for l in ctx.valid_losses) / len(ctx.valid_losses))
+    std_loss = math.sqrt(sum((v - mean_loss)**2 for v in ctx.valid_losses) / len(ctx.valid_losses))
     if mean_loss > 0:
         ctx.ok("flat-loss")
         if (std_loss / mean_loss) < rules.MIN_LOSS_VARIATION:
@@ -136,7 +137,7 @@ def check_divergence(ctx: CheckContext) -> list[dict]:
     if not ctx.valid_losses:
         ctx.no("divergence", "every logged loss is NaN or Inf")
         return []
-    nonzero_losses = [l for l in ctx.valid_losses if l != 0.0]
+    nonzero_losses = [v for v in ctx.valid_losses if v != 0.0]
     min_loss = min(nonzero_losses) if nonzero_losses else 0.0
     if min_loss > 0:
         ctx.ok("divergence")
@@ -166,7 +167,7 @@ def check_dead_run(ctx: CheckContext) -> list[dict]:
     return []
 
 def check_zero_grad(ctx: CheckContext) -> list[dict]:
-    _nz_losses = [l for l in ctx.valid_losses if l != 0.0]
+    _nz_losses = [v for v in ctx.valid_losses if v != 0.0]
     _loss_improved = bool(_nz_losses) and min(_nz_losses) < _nz_losses[0] * (
         1 - rules.MIN_LOSS_IMPROVEMENT
     )
@@ -386,7 +387,7 @@ def check_records(records: list[dict]) -> dict[str, Any]:
         "checks": {"ran": sorted(ctx.ran), "skipped": ctx.skipped},
     }
 
-def check_epoch(log_path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> dict[str, Any]:
+def check_epoch(log_path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] | None = None) -> dict[str, Any]:
     records = parse_log_with_format(log_path, fmt, mapping_overrides)
     if not records:
         return {

@@ -1,9 +1,11 @@
 import math
 from pathlib import Path
 from typing import Any
+
 from . import rules
 from .adapters import parse_log_with_format
 from .epoch import check_epoch
+
 
 def extract_metrics(records):
     losses = []
@@ -35,7 +37,7 @@ def extract_metrics(records):
     # at all and the report read TP-CMP-PASS, "compares favorably", for a run
     # that learned nothing. Mark it instead and let check_compare refuse.
     degenerate = None
-    if all(l == 0.0 for l in losses):
+    if all(v == 0.0 for v in losses):
         degenerate = "every logged loss is exactly 0.0"
     elif start_med <= 0:
         degenerate = "starting loss is not positive - relative improvement is undefined"
@@ -57,7 +59,7 @@ def extract_metrics(records):
         "losses_len": len(losses)
     }
 
-def check_compare(run_path: str | Path, base_path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> dict[str, Any]:
+def check_compare(run_path: str | Path, base_path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] | None = None) -> dict[str, Any]:
     findings = []
     verdict = "PASS"
 

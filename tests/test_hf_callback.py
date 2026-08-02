@@ -1,5 +1,5 @@
 import trainproof.integrations.hf as hf_mod
-from trainproof.integrations.hf import _convert_state_to_records, TrainproofCallback
+from trainproof.integrations.hf import TrainproofCallback, _convert_state_to_records
 
 # Patch so tests can run without transformers installed
 hf_mod._HAS_TRANSFORMERS = True
@@ -74,6 +74,7 @@ def test_hf_callback_stop_on_fail():
     assert control.should_training_stop
 
 import time
+
 
 def test_hf_callback_step_time_injection():
     callback = TrainproofCallback(policy="warn", check_every=10, min_points=10)

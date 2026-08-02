@@ -2,6 +2,7 @@ import html as H
 from pathlib import Path
 from typing import Any
 
+
 def print_verdict_console(verdict: str, findings: list[dict[str, Any]]):
     """Prints an ASCII-safe verdict summary to the console."""
     print("=" * 40)

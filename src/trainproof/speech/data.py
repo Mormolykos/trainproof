@@ -1,12 +1,14 @@
-import os
-import json
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
+
 import numpy as np
 import soundfile as sf
 from ttsproof.normalize import normalize_text, plain_token
+
 from .. import rules
+
 
 def get_audio_hash(filepath: str | Path) -> str:
     hasher = hashlib.md5()

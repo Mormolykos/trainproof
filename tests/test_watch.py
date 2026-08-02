@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
+
 from trainproof.watch import poll_once
+
 
 def test_watch_poll_once(tmp_path: Path):
     log_file = tmp_path / "test.jsonl"
@@ -27,7 +29,7 @@ def test_watch_poll_once(tmp_path: Path):
     assert n == 15
     
     # Check that it doesn't say "changed" if prev_verdict was PASS
-    verdict2, changed2, n2 = poll_once(log_file, "jsonl", "PASS")
+    verdict2, changed2, _n2 = poll_once(log_file, "jsonl", "PASS")
     assert verdict2 == "PASS"
     assert not changed2
     
@@ -42,7 +44,9 @@ def test_watch_poll_once(tmp_path: Path):
     assert n3 == 25
 
 from unittest.mock import patch
+
 from trainproof.watch import watch_loop
+
 
 def test_watch_stall_warning(tmp_path, capsys):
     log_file = tmp_path / "test.jsonl"
@@ -64,5 +68,5 @@ def test_watch_stall_warning(tmp_path, capsys):
         except SystemExit:
             pass
             
-    out, err = capsys.readouterr()
+    out, _err = capsys.readouterr()
     assert "No log growth for 300s" in out

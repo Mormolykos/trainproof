@@ -1,5 +1,7 @@
 import time
+
 from trainproof.epoch import check_records
+
 
 def _convert_state_to_records(state) -> list[dict]:
     history = getattr(state, "log_history", [])
@@ -93,7 +95,13 @@ class TrainproofCallback(TrainerCallback):
                     handle = pynvml.nvmlDeviceGetHandleByIndex(0)
                     util = pynvml.nvmlDeviceGetUtilizationRates(handle)
                     tel["gpu_util"] = float(util.gpu)
-                except Exception:
+                except Exception:  # noqa: S110
+                    # GPU utilisation is optional CONTEXT, never a judgement:
+                    # TP-GPU-UTIL is INFO-only and is excluded from CHECK_GROUPS
+                    # for exactly this reason. If nvml cannot answer, the column
+                    # is simply absent and the rules that need it report
+                    # themselves as skipped. Swallowing here cannot hide a
+                    # finding, because there is no finding to hide.
                     pass
             self.telemetry[step] = tel
             
@@ -120,7 +128,7 @@ class TrainproofCallback(TrainerCallback):
 
         if verdict == "FAIL" and self.last_verdict != "FAIL":
             if self.policy == "stop_on_fail":
-                setattr(control, "should_training_stop", True)
+                control.should_training_stop = True
                 print(f"\nTRAINPROOF ABORT - stopping training at step {step}. Findings:")
             else:
                 print("\nTRAINPROOF WARNING - this run looks doomed:")

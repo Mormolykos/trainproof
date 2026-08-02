@@ -2,7 +2,9 @@ import json
 import re
 from pathlib import Path
 from typing import Any
+
 from .. import rules
+
 
 def load_tokenizer(model_path: str):
     """Returns (tokenizer, error_finding). Never silently degrades: a linter
@@ -50,7 +52,11 @@ def check_tokenizer(model_path: str | Path, transcripts_path: str | Path) -> dic
                 data = json.loads(line)
                 text = data.get("text", "") or data.get("transcript", "")
                 duration = data.get("duration", 0.0)
-            except Exception:
+            except json.JSONDecodeError:
+                # A line that opens with '{' but does not parse is treated as
+                # plain text, which `text` already holds. Narrowed from a bare
+                # Exception so a genuine bug in the lines above surfaces instead
+                # of being read as "not JSON after all".
                 pass
                 
         pieces = tokenizer.encode_as_pieces(text)

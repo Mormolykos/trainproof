@@ -1,8 +1,8 @@
-import json
 import csv
+import json
 import re
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 ANSI_ESCAPE_PATTERN = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
@@ -18,7 +18,7 @@ CANONICAL_ALIASES = {
     "gpu_util": ["gpu_util"]
 }
 
-def _resolve_key(col_name: str, overrides: dict[str, str] = None) -> str | None:
+def _resolve_key(col_name: str, overrides: dict[str, str] | None = None) -> str | None:
     if overrides is not None:
         for canon, col in overrides.items():
             if col.lower() == col_name.lower():
@@ -48,7 +48,7 @@ HF_STATE_META_KEYS = (
 )
 
 
-def parse_hf_trainer_state(text: str, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str], dict]:
+def parse_hf_trainer_state(text: str, mapping_overrides: dict[str, str] | None = None) -> tuple[list[dict[str, float]], dict[str, str], dict]:
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
@@ -77,7 +77,7 @@ def parse_hf_trainer_state(text: str, mapping_overrides: dict[str, str] = None) 
             records.append(record)
     return records, used_mapping, meta
 
-def parse_coqui_trainer_log(text: str, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str]]:
+def parse_coqui_trainer_log(text: str, mapping_overrides: dict[str, str] | None = None) -> tuple[list[dict[str, float]], dict[str, str]]:
     text = ANSI_ESCAPE_PATTERN.sub('', text)
     records = []
     used_mapping = {}
@@ -127,7 +127,7 @@ def parse_coqui_trainer_log(text: str, mapping_overrides: dict[str, str] = None)
         
     return records, used_mapping
 
-def parse_generic_log(text: str, is_csv: bool, mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], dict[str, str]]:
+def parse_generic_log(text: str, is_csv: bool, mapping_overrides: dict[str, str] | None = None) -> tuple[list[dict[str, float]], dict[str, str]]:
     records = []
     used_mapping = {}
     
@@ -172,11 +172,16 @@ def parse_generic_log(text: str, is_csv: bool, mapping_overrides: dict[str, str]
                             pass
                 if norm_row:
                     records.append(norm_row)
-            except Exception:
+            except json.JSONDecodeError:
+                # Non-JSON lines are expected in a JSONL log - banners, blank
+                # separators, a half-written final line from a killed run - and
+                # skipping them is correct. Narrowed from a bare Exception so a
+                # real fault in the normalisation above is no longer disguised
+                # as an unparseable line.
                 pass
     return records, used_mapping
 
-def parse_log_with_format_info(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> tuple[list[dict[str, float]], str, dict[str, str], dict]:
+def parse_log_with_format_info(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] | None = None) -> tuple[list[dict[str, float]], str, dict[str, str], dict]:
     """Parse a log into records plus the format, column mapping, and run meta.
 
     The fourth element is format-level metadata that is not per-step -- see
@@ -223,6 +228,6 @@ def parse_log_with_format_info(path: str | Path, fmt: str = "auto", mapping_over
     else:
         raise ValueError(f"Unknown format: {fmt}")
 
-def parse_log_with_format(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] = None) -> list[dict[str, float]]:
+def parse_log_with_format(path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] | None = None) -> list[dict[str, float]]:
     records, *_ = parse_log_with_format_info(path, fmt, mapping_overrides)
     return records

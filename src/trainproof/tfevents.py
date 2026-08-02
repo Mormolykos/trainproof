@@ -170,7 +170,7 @@ def normalize_tag(tag: str) -> str:
 
 
 def scalars_to_records(scalars: dict[str, list[tuple[int, float, float]]],
-                       mapping_overrides: dict[str, str] = None
+                       mapping_overrides: dict[str, str] | None = None
                        ) -> tuple[list[dict[str, float]], dict[str, str]]:
     """Fold {tag: [(step, value, wall)]} into trainproof's per-step records."""
     from .adapters import _resolve_key
@@ -201,7 +201,7 @@ def scalars_to_records(scalars: dict[str, list[tuple[int, float, float]]],
     return records, used_mapping
 
 
-def parse_tfevents(path: str | Path, mapping_overrides: dict[str, str] = None
+def parse_tfevents(path: str | Path, mapping_overrides: dict[str, str] | None = None
                    ) -> tuple[list[dict[str, float]], dict[str, str]]:
     """Full path: event file (or a directory containing them) -> records."""
     p = Path(path)

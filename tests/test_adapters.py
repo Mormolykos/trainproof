@@ -1,4 +1,5 @@
 from pathlib import Path
+
 from trainproof.adapters import parse_log_with_format
 from trainproof.epoch import check_epoch
 

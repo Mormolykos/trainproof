@@ -27,9 +27,7 @@ Design constraints, in order:
 from __future__ import annotations
 
 import ctypes
-import os
 import shutil
-import struct
 import subprocess
 import sys
 import zipfile

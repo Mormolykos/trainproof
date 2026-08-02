@@ -4,6 +4,26 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.17.0] — 2026-08-02 — the lint gate, and one log that used to vanish
+
+Lint had never been part of the gate. There was no `[tool.ruff]` section, ruff was not a dependency, and running it reported 103 findings against inherited defaults. A repository that ships a linter should not fail its own.
+
+### Fixed
+- **A log that could not be parsed disappeared entirely.** `doctor` walks a directory twice: once to discover candidates, once to judge them. The second pass already reported what it could not read — *"could not be parsed and were NOT judged"*. The first pass did not: a file that raised during discovery was swallowed by `except Exception: pass`, never became a candidate, and so never reached that note. The result was a file plainly visible on disk, absent from the report, and indistinguishable from one that passed — the exact failure `NOT-CHECKED` exists to prevent, sitting one loop earlier than anyone had looked. Discovery failures now feed the same note. Covered by a regression test that was verified to fail without the fix.
+- Two other broad handlers were narrowed rather than removed. A non-JSON line in a JSONL log and a `{`-prefixed line that is not valid JSON are both expected, and skipping them is correct — but they now catch `json.JSONDecodeError` specifically, so a genuine fault in the surrounding code can no longer disguise itself as an unparseable line.
+
+### Added
+- **`[tool.ruff]` in `pyproject.toml`, and a lint gate in the release ritual.** The ruleset is chosen, not inherited: `E`, `F`, `I`, `B`, plus `RUF013` (implicit `Optional` — a type hint that lies), `RUF059`, and `S110` (try-except-pass). Every exclusion carries its reason in the file.
+- `dev` extra (`pytest`, `ruff`) so the gate is installable rather than assumed.
+
+### Notes on what was deliberately *not* adopted
+- **`BLE001` (blind except).** trainproof catches broad exceptions on purpose when parsing logs it did not write and probing subprocesses that can die in ways Python cannot describe. A narrow `except` there would let an unforeseen parser error escape as a traceback instead of exit code 2, "cannot judge". `S110` is enforced instead: catching broadly is fine, catching and *passing* is not.
+- **`PLW1510` (subprocess without `check`).** Every subprocess call here inspects `returncode` itself and turns it into a finding; `check=True` would raise instead, which is the opposite of the required behaviour.
+- **`E501` (line length).** Most long lines are evidence and message strings — the text trainproof prints, asserted in tests and encoded byte-for-byte in the golden snapshots. Reflowing them to satisfy a column limit would risk changing the tool's output to satisfy a ruler.
+
+### Verification
+Zero ruff findings. 228 → 230 tests. All 38 golden snapshots byte-identical, and `scripts/regenerate_evidence.py --check` exits 0 — a cleanup that changes a verdict is not a cleanup.
+
 ## [0.16.0] — 2026-08-02 — the rule registry (no behaviour change)
 
 Every single-run rule lived inside one function, `check_records()`. Adding a rule meant editing the body of several hundred lines that also computed the statistics every other rule depended on, so each new check raised the risk to the checks already there. That was the project's main structural bottleneck and it was blocking the checkpoint work planned next.

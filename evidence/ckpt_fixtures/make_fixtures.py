@@ -1,6 +1,7 @@
 """Generate torch checkpoint fixtures for testing."""
 
 import os
+
 import torch
 
 # Seeded so the committed fixtures and oracle.json stay in step. Without this,

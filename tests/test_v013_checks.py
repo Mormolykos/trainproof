@@ -1,8 +1,10 @@
 import json
 import subprocess
+
 from trainproof.cli import _get_worst_verdict
-from trainproof.epoch import check_records
 from trainproof.compare import check_compare
+from trainproof.epoch import check_records
+
 
 def test_four_point_log_not_checked(tmp_path):
     log = tmp_path / "four_points.jsonl"
@@ -99,6 +101,7 @@ def test_to_sarif_not_checked():
 
 import pytest
 
+
 @pytest.mark.parametrize("verdict", ["PASS", "WARN", "FAIL", "NOT-CHECKED"])
 def test_print_verdict_console_exclusive_verdict(capsys, verdict):
     from trainproof.report import print_verdict_console
@@ -110,7 +113,7 @@ def test_print_verdict_console_exclusive_verdict(capsys, verdict):
             assert other not in captured.out
 
 def test_unrecognized_verdict_normalization():
-    from trainproof.cli import _get_worst_verdict, _get_exit_code, _VERDICT_SEVERITY
+    from trainproof.cli import _VERDICT_SEVERITY, _get_exit_code, _get_worst_verdict
     
     reports_garbage = [{"verdict": "GARBAGE"}]
     reports_missing = [{}]

@@ -7,3 +7,7 @@ domain-specific checks live in packs like this one so future packs
 
 from .data import check_data
 from .tokenizer import check_tokenizer
+
+# Re-exported on purpose: this is the pack's public surface. Declaring it means
+# a linter reads these as the API rather than as dead imports.
+__all__ = ["check_data", "check_tokenizer"]

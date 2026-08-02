@@ -1,8 +1,15 @@
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
+
 from trainproof.preflight import (
-    load_jsonl, _extract_text, check_empty_rows, check_duplicates,
-    check_tokenizer, check_context_length, check_preflight, preflight
+    _extract_text,
+    check_context_length,
+    check_duplicates,
+    check_empty_rows,
+    check_preflight,
+    check_tokenizer,
+    load_jsonl,
+    preflight,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

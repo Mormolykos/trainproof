@@ -1,15 +1,23 @@
 import argparse
-import sys
 import json
+import sys
 from pathlib import Path
+
+from .adapters import parse_log_with_format, parse_log_with_format_info
+from .compare import check_compare
+from .envcheck import check_env
+from .epoch import check_epoch
+from .report import (
+    print_compare_table,
+    print_doctor_autopsy,
+    print_doctor_footer,
+    print_verdict_console,
+    write_html_report,
+)
 from .speech.data import check_data
 from .speech.tokenizer import check_tokenizer
-from .epoch import check_epoch
-from .envcheck import check_env
-from .compare import check_compare
 from .watch import watch_loop
-from .report import print_verdict_console, write_html_report, print_doctor_autopsy, print_doctor_footer, print_compare_table
-from .adapters import parse_log_with_format, parse_log_with_format_info
+
 
 def parse_map(map_list):
     overrides = {}
@@ -206,6 +214,7 @@ def _run():
     if getattr(args, "command", None) in ("doctor", "diagnose"):
         path = Path(args.path)
         candidates = []
+        undiscoverable = []
         if path.is_file():
             candidates.append(path)
         elif path.is_dir():
@@ -218,7 +227,13 @@ def _run():
                         if len(records) >= 3:
                             candidates.append(p)
                     except Exception:
-                        pass
+                        # A file that raises here used to vanish: discovery
+                        # dropped it before it could become a candidate, so it
+                        # never reached the "could not be parsed" note either.
+                        # A log the user can see on disk but cannot find in the
+                        # report is indistinguishable from one that passed -
+                        # the same failure NOT-CHECKED exists to prevent.
+                        undiscoverable.append(p)
         else:
             fail_to_run(f"path not found: {path}")
 
@@ -233,7 +248,7 @@ def _run():
                 candidates = candidates[:20]
                 
         results = []
-        unreadable = []
+        unreadable = list(undiscoverable)
         from .epoch import check_records
         for p in candidates:
             fmt = args.format if path.is_file() else "auto"
@@ -346,7 +361,7 @@ def _run():
                 if len(set(candidate)) == distinct:
                     labels = candidate
                     break
-            label_of = dict(zip(paths, labels))
+            label_of = dict(zip(paths, labels, strict=False))
 
             table_results = []
             if base_metrics:

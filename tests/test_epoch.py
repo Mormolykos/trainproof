@@ -1,6 +1,7 @@
-import pytest
 from pathlib import Path
+
 from trainproof.epoch import check_epoch, check_records
+
 
 def test_epoch_step_time_cliff():
     records = []

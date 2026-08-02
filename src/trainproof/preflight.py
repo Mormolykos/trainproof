@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+
 class PreflightResult:
     def __init__(self, verdict, findings):
         self.verdict = verdict

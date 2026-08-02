@@ -1,6 +1,9 @@
-import pytest
 from pathlib import Path
-from trainproof.epoch import check_records, check_epoch
+
+import pytest
+
+from trainproof.epoch import check_epoch, check_records
+
 
 def test_overfit_fixture_warns_overfit_not_diverge():
     # overfit fixture -> WARN with TP-OVERFIT and NOT TP-DIVERGE.

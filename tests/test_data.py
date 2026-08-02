@@ -1,7 +1,7 @@
-import pytest
-from pathlib import Path
-from trainproof.speech.data import check_data
 import json
+
+from trainproof.speech.data import check_data
+
 
 def test_data_empty_manifest(tmp_path):
     manifest = tmp_path / "empty.jsonl"

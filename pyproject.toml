@@ -1,6 +1,6 @@
 [project]
 name = "trainproof"
-version = "0.16.0"
+version = "0.17.0"
 description = "A deterministic linter for ML training runs: dataset, tokenizer, and epoch logs."
 authors = [{name = "Panagiotis (Panos) Gkilis", email = "bedvibe@bedvibe.studio"}]
 readme = "README.md"
@@ -12,9 +12,73 @@ dependencies = [
     "ttsproof"
 ]
 
+[project.optional-dependencies]
+# The lint gate runs in release.ps1, so the linter has to be installable with
+# the project rather than assumed present on the machine that cuts a release.
+dev = ["pytest", "ruff>=0.16"]
+
 [project.scripts]
 trainproof = "trainproof.cli:main"
 
 [build-system]
 requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+extend-exclude = ["build", "dist", ".venv", "recon"]
+
+# The ruleset is chosen, not inherited. Running ruff with its defaults reports
+# 103 findings here, and adopting all of them would make this codebase worse:
+# several are opinions that contradict deliberate design decisions. Each entry
+# below is selected because violating it would be a defect, and the notable
+# exclusions are recorded so nobody "fixes" them later by widening the list.
+[tool.ruff.lint]
+select = [
+    "E",       # pycodestyle errors
+    "F",       # pyflakes: undefined names, unused imports
+    "I",       # import ordering
+    "B",       # bugbear: real bug patterns
+    "RUF013",  # implicit Optional - `x: str = None` is a lie about the type
+    "RUF059",  # unpacked variable never used
+    "S110",    # try-except-pass: a silently swallowed failure
+]
+
+ignore = [
+    # Most long lines here are evidence and message strings - the text
+    # trainproof actually prints. Those strings are asserted in tests and
+    # encoded byte-for-byte in the golden snapshots, so reflowing them to
+    # satisfy a column limit risks changing the tool's output to satisfy a
+    # ruler. Readability of prose beats a hard wrap.
+    "E501",
+    # `if x is not None: xs.append(x)` is used consistently throughout the
+    # record-parsing code and reads better packed than expanded. A style
+    # preference applied uniformly is not a defect.
+    "E701",
+    # Deferred imports are deliberate: heavy or optional dependencies are
+    # imported inside the function that needs them so `trainproof --version`
+    # stays instant and a missing optional dep becomes exit 2 rather than an
+    # ImportError at startup.
+    "E402",
+]
+
+# NOT selected, deliberately:
+#
+#   BLE001 (blind-except) - trainproof catches broad exceptions on purpose when
+#     parsing logs it did not write and probing subprocesses that may die in
+#     ways Python cannot describe. A narrow except there would let an unforeseen
+#     parser error escape as a traceback instead of exit code 2 ("cannot judge").
+#     S110 is selected instead: catching broadly is fine, catching and *passing*
+#     is not.
+#
+#   PLW1510 (subprocess-run-without-check) - every subprocess call here inspects
+#     returncode itself and turns it into a finding. check=True would raise
+#     instead, which is the opposite of the required behaviour.
+#
+#   FURB/SIM/PLR style rules - churn without defect reduction.
+
+[tool.ruff.lint.per-file-ignores]
+# Fixture and probe scripts under evidence/ intentionally use torch and write
+# files; they are reference implementations, not shipped code.
+"evidence/**" = ["S", "B"]
