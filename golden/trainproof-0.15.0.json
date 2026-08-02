@@ -114,6 +114,30 @@
       {
         "claim": "The evidence base at 0.15.0 covers three training frameworks. HuggingFace is represented by a synthetic fault-injection gallery of 6 configurations across 3 seeds; Coqui XTTS v2 and PyTorch Lightning / Fish Speech are represented by real fine-tunes on an RTX 5080 whose logs ship in evidence/, including one run shipped as both a text log and the TensorBoard event file written by the same training, parsed by independent readers that agree exactly.",
         "evidence": "EVIDENCE_MATRIX.md"
+      },
+      {
+        "claim": "TP-ZERO-LOSS (FAIL) fires when every finite loss in a run is exactly 0.0. That series is the log signature of a labels bug - typically all labels masked to -100 - so the run learned nothing while every loss-shape check silently skipped, because each is guarded against dividing by zero. Before this rule such a run returned PASS and the report named those same skipped checks as having run.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "TP-ZERO-GRAD (FAIL) fires when every finite gradient norm is exactly 0.0 and the loss did not improve. That means no gradient reached the weights: the backward graph is severed or every parameter is frozen. With PEFT the usual cause is reentrant gradient checkpointing (use_reentrant=True) over frozen input embeddings, which detaches the graph before it reaches the adapters; calling enable_input_require_grads() or passing use_reentrant=False fixes it. Before 0.12.0 this shape was misdiagnosed as a dead run.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "TP-CMP-UNCOMPARABLE stops trainproof compare from reporting a zero-loss run as favourable against a baseline. A loss floor of zero beats any baseline arithmetically, so a run that learned nothing would otherwise win the comparison; the rule refuses the comparison instead, because there is no usable loss scale to compare on.",
+        "evidence": "src/trainproof/compare.py"
+      },
+      {
+        "claim": "On the Fish Speech LoRA fine-tune shipped in evidence/, trainproof returns WARN with TP-OVERFIT: evaluation loss reached its minimum of 9.23 at step 99 and rose to 16.19 by step 2049 while training loss kept falling to 2.84. The best checkpoint was therefore early in the run, and every checkpoint saved to disk comes from step 1600 or later - all of them past the turn.",
+        "evidence": "evidence/fish_lightning_feb2026"
+      },
+      {
+        "claim": "On the 125,000-step Coqui XTTS v2 fine-tune shipped in evidence/, trainproof returns FAIL with TP-DIVERGE: the loss ended at 0.032 against a floor of 0.017, so the final checkpoint is not the best one. TP-THROUGHPUT also executes, measuring 3.17 steps per second over 39,412 seconds observed, because Coqui logs carry timestamps while HuggingFace trainer_state.json does not.",
+        "evidence": "evidence/xtts_coqui_feb2026"
+      },
+      {
+        "claim": "TP-ZERO-GRAD was producing a false FAIL before 0.14.0. Coqui writes TrainEpochStats/avg_grad_norm as 0.0 when gradient clipping is off, so a healthy 125,000-step XTTS fine-tune whose loss reached 0.017 was condemned as having a severed backward graph. A run cannot both learn and receive no gradient, so the check now stands down when the loss improved by more than the minimum-improvement threshold and records the reason as a skip. The false positive was found by running the shipped rules against a real training run, not by a test.",
+        "evidence": "src/trainproof/epoch.py"
       }
     ],
     "limitations": [
@@ -223,6 +247,30 @@
     {
       "question": "Why is a run that fails to start worth a whole release?",
       "answer": "Because it is the failure mode with no log to inspect afterwards, and therefore the one every log-based tool is blind to. A stack that will not import, a checkpoint that segfaults its own loader, and a first batch that exhausts system memory all produce zero training steps and zero recorded metrics, while still costing setup time, GPU reservation and in the memory case a machine that has to be hard-reset. Those three failures happened in one day on a single run that never logged a step, which is what the release is built from."
+    },
+    {
+      "question": "What does trainproof say about a training run whose loss is exactly 0.0 on every logged step?",
+      "answer": "It fails the run with TP-ZERO-LOSS. A loss that is exactly zero on every step is not a perfect model, it is the log signature of a labels bug - typically every label masked to -100 - so the run learned nothing. It matters because each loss-shape check is guarded against dividing by zero, so before this rule existed all of them skipped silently, the verdict stayed PASS, and the report then listed those same skipped checks as having run. A run that learned nothing was passed and told which checks had cleared it."
+    },
+    {
+      "question": "My fine-tune logs a gradient norm of exactly zero on every step. Would trainproof catch that?",
+      "answer": "Yes - TP-ZERO-GRAD, at FAIL, provided the loss did not improve. An all-zero gradient norm means no gradient reached the weights: the backward graph is severed or every parameter is frozen. With PEFT the usual cause is reentrant gradient checkpointing over frozen input embeddings, which detaches the graph before it reaches the adapters; enable_input_require_grads() or use_reentrant=False fixes it. The rule deliberately stands down when the loss demonstrably improved, because a run cannot both learn and receive no gradient - some frameworks, Coqui among them, log an aggregate gradient norm as 0.0 when clipping is off."
+    },
+    {
+      "question": "If a run has a loss floor of zero, can it come out ahead of a healthy baseline when compared?",
+      "answer": "No. TP-CMP-UNCOMPARABLE refuses the comparison. A loss floor of zero beats any baseline arithmetically, so a run that learned nothing would otherwise be reported as favourable against a healthy one. Rather than return a flattering number, trainproof states that there is no usable loss scale to compare on."
+    },
+    {
+      "question": "What did trainproof actually find on the Fish Speech fine-tune shipped as evidence?",
+      "answer": "WARN, with TP-OVERFIT. Evaluation loss bottomed out at 9.23 at step 99 and climbed to 16.19 by step 2049, while training loss kept falling to 2.84 - the model was memorising rather than generalising. The best checkpoint was therefore early in the run, and every checkpoint saved to disk comes from step 1600 or later, all of them well past the turn. TP-THROUGHPUT also executes on that log, at 0.22 steps per second."
+    },
+    {
+      "question": "Why did the TP-ZERO-GRAD rule change, and was it wrong before?",
+      "answer": "It was wrong before, and the fix shipped in 0.14.0. The rule condemned any run whose finite gradient norms were all exactly 0.0, reporting a severed backward graph. Coqui writes its aggregate avg_grad_norm as 0.0 when gradient clipping is off, so a healthy 125,000-step XTTS fine-tune whose loss reached 0.017 was reported FAIL. A run cannot both learn and receive no gradient, so the check now stands down when the loss improved and records the reason as a skip, while staying armed when the loss is stuck. It was found by running the shipped rules against a real training run rather than by a test."
+    },
+    {
+      "question": "How does trainproof stop its own documentation from drifting away from its test results?",
+      "answer": "EVIDENCE_MATRIX.md is generated by scripts/regenerate_evidence.py rather than written, and the file carries a header saying so. Every verdict in it is computed by running the shipped rules over the shipped logs at generation time, and the derived observations at the bottom are computed too - including the check that two independent readers of the same XTTS run agree. A --check mode fails the build when the file no longer matches the gallery. It used to be maintained by hand and drifted, publishing v0.3-dev verdicts against a v0.10 engine. Separately, a contract test asserts that the rule IDs in the source and in RULES.md match in both directions."
     }
   ],
   "generated_by": "release.ps1",
