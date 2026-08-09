@@ -1,0 +1,46 @@
+{
+  "title": "trainproof: a deterministic linter for ML training runs",
+  "upload_type": "software",
+  "license": "MIT",
+  "creators": [
+    {
+      "name": "Gkilis, Panagiotis",
+      "affiliation": "BedVibe Studios"
+    }
+  ],
+  "description": "<p><strong>trainproof</strong> is a deterministic linter for machine-learning training runs. It issues PASS / WARN / NOT-CHECKED / FAIL verdicts across a run's whole life: an environment and dataset preflight before a single GPU-second is spent, a live guardian during training that can abort a doomed run, a post-run autopsy, and a comparison against a known-good baseline.</p><p><strong>No ML judging ML.</strong> Every verdict is a rule that either fires or does not, every finding cites the exact numbers behind it, and a check that could not run is reported as NOT-CHECKED rather than as a pass. There are no invented confidence scores.</p><p>It reads five log formats, including TensorBoard event files decoded directly from the wire format with no TensorFlow, TensorBoard, protobuf, torch or numpy installed, validated byte-exact against TensorBoard's own EventAccumulator.</p><p>From v0.18.0 it also reads the training <em>objective</em> rather than only the run: TP-OBJ-IGNORE-INDEX-COLLISION detects a cross-entropy ignore_index that is also a valid class in the output layer, a collision that silently discards every target carrying that id before the loss is computed, and TP-OBJ-DEAD-CLASS detects a class the model can emit that never once appears as a training target. Both are decidable at step 0 and are deliberately independent of the loss curve: in a controlled reproduction, the broken and corrected runs end at 0.0035 and 0.0034 final loss, indistinguishable by any curve-shaped diagnostic, while the broken model never learns to terminate.</p><p>The rules are grounded in an 18-run fault-injection study (Qwen2.5-3B QLoRA, RTX 5080; six configurations at three seeds each) with every real log shipped in-repo, plus real fine-tunes from three frameworks: HuggingFace, Coqui XTTS and PyTorch Lightning.</p>",
+  "keywords": [
+    "machine learning",
+    "training reliability",
+    "static analysis",
+    "linter",
+    "MLOps",
+    "reproducibility",
+    "fault injection",
+    "deep learning",
+    "PyTorch",
+    "TensorBoard",
+    "loss curves",
+    "cross-entropy",
+    "training diagnostics"
+  ],
+  "access_right": "open",
+  "language": "eng",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/Mormolykos/trainproof",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://pypi.org/project/trainproof/",
+      "relation": "isIdenticalTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.5281/zenodo.20757553",
+      "relation": "isDerivedFrom",
+      "scheme": "doi"
+    }
+  ]
+}
