@@ -110,6 +110,35 @@ These rules validate tokenizers and datasets (via `trainproof tokenizer` or `tra
 | `TP-PRE-MALFORMED-JSONL` | FAIL | JSONL parsing failed for some lines. |
 | `TP-PRE-OK` | PASS | The preflight checks passed. |
 
+## Objective Rules
+
+These rules inspect the **loss objective** — the output layer, the ignore sentinel, and
+which classes actually reach the loss as positive targets. They are deliberately
+independent of the loss curve.
+
+They exist because of a failure no curve-shaped rule in this file can see. A
+VALL-E-X-derived TTS model set its end-of-sequence id and its cross-entropy
+`ignore_index` to the same integer, so every stop target was discarded before the loss
+and the model was never taught to stop. It trained for fifteen epochs on a healthy
+curve. A minimal reproduction of the collision and its fix ended at **0.0035 and
+0.0034** final loss — indistinguishable. The bug is decidable at step 0 from shapes and
+one integer; it is undecidable from any number of steps of loss.
+
+| Rule ID | Level | Meaning |
+| :--- | :--- | :--- |
+| `TP-OBJ-IGNORE-INDEX-COLLISION` | FAIL | `ignore_index` is a valid class in the output layer (`0 <= ignore_index < num_classes`). Every target carrying that id is dropped from the loss and can never be learned. |
+| `TP-OBJ-IGNORE-INDEX-OK` | INFO | `ignore_index` equals `num_classes` — one past the last class, therefore outside the output layer and safe. Reported because the same integer is fatal one class earlier. |
+| `TP-OBJ-DEAD-CLASS` | FAIL | A class exists in the output layer but never appears as a positive target, while coverage of the other classes is broad. The model has no way to learn to emit it. |
+| `TP-OBJ-TARGET-OUT-OF-RANGE` | FAIL | Targets contain ids the output layer cannot represent. |
+| `TP-OBJ-COVERAGE-INSUFFICIENT` | INFO | Too few distinct classes were observed to judge dead classes. Absence here means small sample, not bug. |
+| `TP-OBJ-DEAD-CLASS-OK` | PASS | Every class in the output layer appeared as a training target. |
+
+`TP-OBJ-DEAD-CLASS` fires only when coverage is already broad (see
+`DEAD_CLASS_MIN_COVERAGE`) and only a small number of classes are missing (see
+`DEAD_CLASS_MAX_REPORTED`). One unseen class out of 1025 with the other 1024 present is
+a structural exclusion; nine hundred unseen classes is a small sample, and reporting it
+would bury the finding that matters.
+
 ## Environment Preflight Rules (trainproof env)
 
 These rules check whether the machine can start a training run at all — before a single GPU-second is spent. Import checks run in a subprocess; checkpoints are read as ZIP archives and never unpickled.

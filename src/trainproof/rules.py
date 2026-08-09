@@ -114,6 +114,31 @@ STEP_TIME_CLIFF_RATIO = 3.0
 LOADER_FRACTION_MAX = 0.5
 
 # -----------------
+# OBJECTIVE CHECKS
+# -----------------
+
+# Dead-class detection. A class that the output layer can emit but that never once
+# appears as a positive target cannot be learned, no matter how long the run goes.
+#
+# Set from a real failure: a VALL-E-X-derived TTS model whose end-of-sequence id and
+# whose cross-entropy ignore_index were the same integer (1024, inside a 1025-class
+# output layer). Every stop target was discarded before the loss, and the model was
+# never taught to stop. Fifteen epochs; a healthy loss curve throughout. A minimal
+# reproduction with the collision and without it ended at 0.0035 and 0.0034 final
+# loss, so this is invisible to every curve-shaped check in this library.
+#
+# The two thresholds exist to separate a structural exclusion from a small sample.
+# One unseen class out of 1025, with the other 1024 all present, is a bug. Nine
+# hundred unseen classes out of 1025 is simply not enough data yet, and reporting it
+# would bury the signal. Coverage must be broad before absence means anything.
+DEAD_CLASS_MIN_COVERAGE = 0.5
+
+# Report only when a SMALL number of classes are missing from otherwise broad
+# coverage. Above this count, absence is far more likely to be sparsity than a
+# structural exclusion, and the finding stops being actionable.
+DEAD_CLASS_MAX_REPORTED = 8
+
+# -----------------
 # ENVIRONMENT PREFLIGHT
 # -----------------
 

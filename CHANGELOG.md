@@ -4,6 +4,26 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [0.18.0] — 2026-08-09 — the objective release
+
+Every rule shipped so far reads the training run: the loss curve, the gradient norms, the learning rate, the timing. This release adds the first rules that read the **objective itself** — the output layer, the ignore sentinel, and which classes actually reach the loss as positive targets. They are deliberately independent of the curve, because the failure that motivated them is invisible to it.
+
+The failure was mine. A VALL-E-X-derived TTS model set its end-of-sequence id and its cross-entropy `ignore_index` to the same integer, `NUM_AUDIO_TOKENS = 1024`, against a 1025-class output layer. `ignore_index` therefore discarded every end-of-sequence target before the loss was computed, and the model was never once shown what "stop" meant. It trained for fifteen epochs on a healthy-looking curve and produced a model that could not stop generating. A minimal 40-line reproduction — same data, same seed, same everything, one integer changed — ends at **0.0035** final loss with the collision and **0.0034** without it. The broken arm assigns the stop token a probability of 0.000001 and never terminates; the fixed arm assigns 0.996565 and terminates on every sample. **No loss-shaped check in this library can separate those two runs, and none ever will.** The bug is decidable at step 0 from two integers and undecidable from any number of steps afterwards.
+
+### Added
+- `TP-OBJ-IGNORE-INDEX-COLLISION` (FAIL) — `ignore_index` is a valid class in the output layer (`0 <= ignore_index < num_classes`). Every target carrying that id is dropped from the loss and can never be learned.
+- `TP-OBJ-DEAD-CLASS` (FAIL) — a class exists in the output layer but never once appears as a positive target, while coverage of the other classes is broad. Fires on the motivating bug with no knowledge of TTS, EOS or the model family: *"class 1024 is in your output layer but never appears as a training target."*
+- `TP-OBJ-TARGET-OUT-OF-RANGE` (FAIL) — targets contain ids the output layer cannot represent.
+- `TP-OBJ-IGNORE-INDEX-OK` (INFO) — the sentinel sits exactly one past the last class, therefore outside the output layer and safe. Reported rather than stayed silent on, because the same integer is fatal one class earlier — the NAR stage of the same model uses `ignore_index = 1024` against **1024** classes and is correct for that reason alone.
+- `TP-OBJ-COVERAGE-INSUFFICIENT` (INFO) — too few distinct classes observed to judge dead classes. Absence here means small sample, not bug.
+- `TP-OBJ-DEAD-CLASS-OK` (PASS).
+- `TrainproofCallback` now runs the objective checks **once, in `on_train_begin`, before step 1**, inferring the output-layer width and the sentinel from the model and sampling the first batches of labels from the dataloader. No user action, no new call site. `objective_check=False` disables it; `num_classes` and `ignore_index` can be passed explicitly when inference cannot see them. Under `stop_on_fail` a broken objective aborts the run before a single GPU-second is spent, which is the whole point.
+
+### Notes
+- `TP-OBJ-DEAD-CLASS` fires only when coverage is already broad (`DEAD_CLASS_MIN_COVERAGE`) **and** few classes are missing (`DEAD_CLASS_MAX_REPORTED`). One unseen class out of 1025 with the other 1024 present is a structural exclusion; nine hundred unseen classes is a small sample. A check that shouts on every short run gets switched off, and then it detects nothing.
+- The regression fixtures are the real thing rather than invented cases: the AR stage that carried the bug and the NAR stage of the same model that did not, one `+ 1` apart in output width.
+- No existing rule, threshold or verdict changed. 245 → 258 tests.
+
 ## [0.17.0] — 2026-08-02 — the lint gate, and one log that used to vanish
 
 Lint had never been part of the gate. There was no `[tool.ruff]` section, ruff was not a dependency, and running it reported 103 findings against inherited defaults. A repository that ships a linter should not fail its own.
