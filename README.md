@@ -26,6 +26,21 @@ answering a single question — *if it were gone, would someone lose GPU hours?*
 pip install trainproof
 ```
 
+**The core has no runtime dependencies.** Reading a log file should not require
+installing a training stack, so it does not: no tensorflow, no tensorboard, no
+protobuf, no torch, no numpy.
+
+The speech and TTS dataset pack (`trainproof data`) reads audio, so it genuinely
+needs `numpy`, `soundfile` and `ttsproof`. Those are an extra, not a tax on
+everyone else:
+
+```bash
+pip install 'trainproof[speech]'
+```
+
+Calling a speech check without it fails with that command in the message rather
+than a bare `ImportError`.
+
 ## The Doctor (v0.6)
 
 "Why did my run diverge? Why is my loss flat? Did my dataset break?"
