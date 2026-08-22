@@ -7,15 +7,42 @@
     "test_command": "python -m pytest --collect-only -q",
     "python_requires": ">=3.10",
     "commands": [
-      { "name": "data", "purpose": "Dataset preflight for speech/TTS corpora. Needs the trainproof[speech] extra." },
-      { "name": "tokenizer", "purpose": "Tokenizer preflight. Standard library only." },
-      { "name": "epoch", "purpose": "First-epoch verdict from training logs." },
-      { "name": "doctor", "purpose": "Flagship zero-config autopsy of training logs." },
-      { "name": "diagnose", "purpose": "Alias of doctor." },
-      { "name": "compare", "purpose": "Compare a run log against a baseline log." },
-      { "name": "watch", "purpose": "Live guardian: poll a training log." },
-      { "name": "preflight", "purpose": "Pre-flight linter for LLM fine-tuning datasets." },
-      { "name": "env", "purpose": "Environment preflight: can this machine start this run?" }
+      {
+        "name": "data",
+        "purpose": "Dataset preflight for speech/TTS corpora. Needs the trainproof[speech] extra."
+      },
+      {
+        "name": "tokenizer",
+        "purpose": "Tokenizer preflight. Standard library only."
+      },
+      {
+        "name": "epoch",
+        "purpose": "First-epoch verdict from training logs."
+      },
+      {
+        "name": "doctor",
+        "purpose": "Flagship zero-config autopsy of training logs."
+      },
+      {
+        "name": "diagnose",
+        "purpose": "Alias of doctor."
+      },
+      {
+        "name": "compare",
+        "purpose": "Compare a run log against a baseline log."
+      },
+      {
+        "name": "watch",
+        "purpose": "Live guardian: poll a training log."
+      },
+      {
+        "name": "preflight",
+        "purpose": "Pre-flight linter for LLM fine-tuning datasets."
+      },
+      {
+        "name": "env",
+        "purpose": "Environment preflight: can this machine start this run?"
+      }
     ],
     "features_added": [
       {
@@ -33,6 +60,74 @@
       {
         "claim": "tests/test_core_install.py is new: 16 tests that block numpy, soundfile and ttsproof from the import system in a fresh subprocess and assert that twelve core modules and the epoch CLI still work.",
         "evidence": "tests/test_core_install.py, using an importlib.abc.MetaPathFinder that raises on those three top-level names."
+      },
+      {
+        "claim": "0.18.0 adds the first rules that read the training OBJECTIVE rather than the training run. TP-OBJ-IGNORE-INDEX-COLLISION fires when a cross-entropy ignore_index is a valid class in the output layer, so every target carrying that id is discarded before the loss and can never be learned. TP-OBJ-DEAD-CLASS fires when a class exists in the output layer but never once appears as a positive target while coverage of the other classes is broad. Both are decidable at step 0 and are deliberately independent of the loss curve. The motivating failure was a text-to-speech model whose end-of-sequence id and ignore_index were the same integer: it trained for fifteen epochs on a healthy curve and produced a model that could not stop generating. A minimal reproduction with the collision and without it ends at 0.0035 and 0.0034 final loss - indistinguishable, so no curve-shaped rule in this library can separate them.",
+        "evidence": "src/trainproof/objective.py, tests/test_objective.py"
+      },
+      {
+        "claim": "The Hugging Face callback runs the objective checks once in on_train_begin, before step 1, inferring the output-layer width and the ignore sentinel from the model and sampling the first batches of labels from the dataloader. No new call site and no user action are required; under policy='stop_on_fail' a broken objective aborts the run before a GPU-second is spent.",
+        "evidence": "src/trainproof/integrations/hf.py, tests/test_hf_objective.py"
+      },
+      {
+        "claim": "0.15.0 adds 'trainproof env', an environment preflight that judges whether a machine can start a training run rather than whether a run went well. Every check before this version reads a log, which means the run has already started and the GPU hours are already spent; the most expensive failures never reach a log at all. All of its checks are standard-library only - no torch, no ML framework, no GPU, no network.",
+        "evidence": "src/trainproof/envcheck.py"
+      },
+      {
+        "claim": "Import checks (TP-ENV-IMPORT-OK, TP-ENV-IMPORT-FAIL, TP-ENV-IMPORT-CRASH, TP-ENV-IMPORT-TIMEOUT) import the training entrypoint in a subprocess and report the exception type, message and raising file. Out-of-process is a safety requirement, not a detail: the failures here include segfaulting extension modules, CUDA aborts and libraries calling os._exit during import, any of which would kill an in-process linter and leave the user with no diagnosis.",
+        "evidence": "src/trainproof/envcheck.py:check_import"
+      },
+      {
+        "claim": "An import that crashes the interpreter with no Python exception is reported as TP-ENV-IMPORT-CRASH, naming it a native fault rather than misreporting it as an ImportError. This is the observable signature of torch.load segfaulting on an older checkpoint under torch 2.6 or newer.",
+        "evidence": "src/trainproof/envcheck.py:check_import"
+      },
+      {
+        "claim": "The --cwd flag probes from the directory training actually launches in. Editable installs and source checkouts resolve relative to the working directory, so probing from elsewhere reports 'No module named X' for a package that imports perfectly - a false FAIL that blames the environment for the linter's own mistake. A --cwd that does not exist yields TP-ENV-CWD-MISSING at NOT-CHECKED and no subprocess is started.",
+        "evidence": "src/trainproof/envcheck.py:check_import"
+      },
+      {
+        "claim": "Checkpoint checks (TP-ENV-CKPT-*) inspect a .pt, .pth or .ckpt without deserialising it. torch.load executes arbitrary code by design, which is why torch 2.6 changed weights_only to True; a linter that must run the file it is inspecting is not a safety tool. A checkpoint is read as the ZIP archive it is - entry table, tensor-storage count and CRC, all from the archive directory - so a corrupt or hostile file cannot execute anything.",
+        "evidence": "src/trainproof/envcheck.py:check_checkpoint"
+      },
+      {
+        "claim": "The checkpoint check distinguishes missing, zero-byte, truncated, CRC-corrupt, legacy pre-1.6 pickle, and complete. A legacy bare-pickle checkpoint is reported NOT-CHECKED rather than FAIL, because refusing to unpickle is correct behaviour and not a defect in the file.",
+        "evidence": "src/trainproof/envcheck.py:check_checkpoint"
+      },
+      {
+        "claim": "TP-ENV-CKPT-TRUNCATED fires when a checkpoint carries the ZIP local-file-header magic but has no central directory - the exact state a save killed mid-write leaves behind. zipfile.is_zipfile() returns False for such a file, so before this was fixed the most common real checkpoint failure was reported as 'neither a torch archive nor a pickle', which is the difference between resuming from the previous checkpoint and hunting for a file that was never written. Caught by a test before release.",
+        "evidence": "tests/test_v015_envcheck.py"
+      },
+      {
+        "claim": "Memory checks (TP-ENV-MEM-*) compare available system RAM against a declared requirement, with a headroom threshold below which the margin is reported as thin. System RAM rather than VRAM is the measured resource because on Windows the driver spills to system memory instead of raising a clean out-of-memory error, so exhaustion freezes the desktop rather than failing the run.",
+        "evidence": "src/trainproof/envcheck.py:check_memory"
+      },
+      {
+        "claim": "Where system memory cannot be determined the result is TP-ENV-MEM-UNKNOWN at NOT-CHECKED. An unmeasurable machine is never reported as a machine with no memory.",
+        "evidence": "src/trainproof/envcheck.py:system_memory_gb"
+      },
+      {
+        "claim": "Disk checks (TP-ENV-DISK-*) compare free space at the output directory against the declared checkpoint size multiplied by the number of checkpoints kept.",
+        "evidence": "src/trainproof/envcheck.py:check_disk"
+      },
+      {
+        "claim": "0.16.0 restructures the single-run rules and changes no behaviour. Every rule previously lived inside one function, check_records(), which also computed the statistics the other rules depended on, so adding a check raised the risk to the checks already present. Each rule is now a standalone function taking a CheckContext and returning findings, and check_records() builds the context and runs a registry in order. No rule, threshold, verdict, evidence string or output shape changed.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "The no-behaviour-change claim in 0.16.0 is enforced rather than asserted: all 38 golden snapshots are byte-identical to 0.15.0, scripts/regenerate_evidence.py --check exits 0, and the same 228 tests pass unmodified. A refactor of judging logic that cannot prove it changed nothing is indistinguishable from a silent regression.",
+        "evidence": "tests/golden"
+      },
+      {
+        "claim": "0.17.0 fixes a log that could disappear from a report entirely. doctor walks a directory twice - once to discover candidate logs, once to judge them. The second pass already reported anything it could not read as 'could not be parsed and were NOT judged'; the first pass swallowed failures with except Exception: pass, so a file that raised during discovery never became a candidate and never reached that note. The result was a file plainly visible on disk, absent from the report, and indistinguishable from one that passed - the exact failure NOT-CHECKED exists to prevent, one loop earlier than anyone had looked. Discovery failures now feed the same note, covered by a regression test verified to fail without the fix.",
+        "evidence": "tests/test_v017_discovery.py"
+      },
+      {
+        "claim": "Two further broad exception handlers were narrowed rather than removed. A non-JSON line inside a JSONL log, and a line beginning with '{' that is not valid JSON, are both expected inputs and skipping them is correct - but they now catch json.JSONDecodeError specifically, so a genuine fault in the surrounding code can no longer disguise itself as an unparseable line.",
+        "evidence": "src/trainproof/adapters.py"
+      },
+      {
+        "claim": "0.17.0 adds a lint gate to the release ritual, with the ruleset pinned in pyproject.toml. Lint had never been part of the gate: there was no [tool.ruff] section, ruff was not a dependency, and running it against inherited defaults reported 103 findings. The repository now reports zero.",
+        "evidence": "pyproject.toml"
       }
     ],
     "architecture_facts": [
@@ -55,6 +150,90 @@
       {
         "claim": "Every single-run report carries a checks object with ran and skipped, so a consumer can answer \"was this actually checked?\" INFO-only observations are deliberately excluded from that accounting, because a missing observation cannot imply a clean result.",
         "evidence": "CONTRACTS.md; src/trainproof/epoch.py CHECK_GROUPS"
+      },
+      {
+        "claim": "90 distinct TP-* rule IDs exist in the source at 0.18.0, up from 84 at 0.17.0. All 6 additions are under the TP-OBJ- prefix and belong to the new objective checks; no existing rule, threshold or verdict changed.",
+        "evidence": "tests/test_contracts.py"
+      },
+      {
+        "claim": "TP-OBJ-DEAD-CLASS fires only when class coverage is already broad and only a small number of classes are missing. One unseen class out of 1025 with the other 1024 present is a structural exclusion; nine hundred unseen classes is a small sample. A check that fires on every short run gets disabled, and then it detects nothing.",
+        "evidence": "src/trainproof/rules.py"
+      },
+      {
+        "claim": "84 distinct TP-* rule IDs exist in the source at 0.17.0, up from 62 at 0.14.0. All 22 additions are under the TP-ENV- prefix and belong to the new env command; no existing rule, threshold or verdict changed.",
+        "evidence": "tests/test_contracts.py"
+      },
+      {
+        "claim": "JSON schema_version remains 3 at 0.17.0. The verdict enum is unchanged (PASS, WARN, NOT-CHECKED, FAIL) and no consumer contract is broken - 0.15.0 adds a command, it does not alter how any existing report is shaped.",
+        "evidence": "CONTRACTS.md"
+      },
+      {
+        "claim": "trainproof exposes eight commands at 0.17.0, covering the three phases of a run: before (data, tokenizer, preflight, env), during (watch), and after (epoch, doctor, compare). The env command completes the 'before' phase, which previously covered only datasets and tokenizers.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "The verdict for an env report is derived in exactly one place, check_env. An earlier CLI wiring reconstructed it separately in order to splice in a check it had run itself, creating a second copy of the rule on a branch that no test exercised; the parameter was added to check_env instead and three regression tests pin it.",
+        "evidence": "src/trainproof/envcheck.py:check_env"
+      },
+      {
+        "claim": "trainproof reads five log formats at 0.17.0: HuggingFace trainer_state.json, Coqui trainer text logs, TensorBoard event files, JSONL and CSV. Format is auto-detected and can be overridden with --format hf|coqui|tfevents|jsonl|csv.",
+        "evidence": "src/trainproof/adapters.py"
+      },
+      {
+        "claim": "The analysis pipeline parses scalar metric records and configuration, and never inspects model weights, activations or gradients. It runs with no ML framework, no network client and no telemetry. The environment preflight added in 0.15.0 preserves this: it uses only zipfile, ctypes, struct and subprocess from the standard library.",
+        "evidence": "src/trainproof/envcheck.py"
+      },
+      {
+        "claim": "Severity and exit code are separate axes. Severity orders FAIL, WARN, NOT-CHECKED, PASS; the exit code is 1 if any finding is FAIL, 2 if anything could not be judged, and 0 otherwise. An env report that could judge nothing therefore exits 2, not 0.",
+        "evidence": "src/trainproof/cli.py"
+      },
+      {
+        "claim": "The evidence base at 0.17.0 covers three training frameworks. HuggingFace is represented by a synthetic fault-injection gallery of 6 configurations across 3 seeds; Coqui XTTS v2 and PyTorch Lightning / Fish Speech are represented by real fine-tunes on an RTX 5080 whose logs ship in evidence/, including one run shipped as both a text log and the TensorBoard event file written by the same training, parsed by independent readers that agree exactly.",
+        "evidence": "EVIDENCE_MATRIX.md"
+      },
+      {
+        "claim": "TP-ZERO-LOSS (FAIL) fires when every finite loss in a run is exactly 0.0. That series is the log signature of a labels bug - typically all labels masked to -100 - so the run learned nothing while every loss-shape check silently skipped, because each is guarded against dividing by zero. Before this rule such a run returned PASS and the report named those same skipped checks as having run.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "TP-ZERO-GRAD (FAIL) fires when every finite gradient norm is exactly 0.0 and the loss did not improve. That means no gradient reached the weights: the backward graph is severed or every parameter is frozen. With PEFT the usual cause is reentrant gradient checkpointing (use_reentrant=True) over frozen input embeddings, which detaches the graph before it reaches the adapters; calling enable_input_require_grads() or passing use_reentrant=False fixes it. Before 0.12.0 this shape was misdiagnosed as a dead run.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "TP-CMP-UNCOMPARABLE stops trainproof compare from reporting a zero-loss run as favourable against a baseline. A loss floor of zero beats any baseline arithmetically, so a run that learned nothing would otherwise win the comparison; the rule refuses the comparison instead, because there is no usable loss scale to compare on.",
+        "evidence": "src/trainproof/compare.py"
+      },
+      {
+        "claim": "On the Fish Speech LoRA fine-tune shipped in evidence/, trainproof returns WARN with TP-OVERFIT: evaluation loss reached its minimum of 9.23 at step 99 and rose to 16.19 by step 2049 while training loss kept falling to 2.84. The best checkpoint was therefore early in the run, and every checkpoint saved to disk comes from step 1600 or later - all of them past the turn.",
+        "evidence": "evidence/fish_lightning_feb2026"
+      },
+      {
+        "claim": "On the 125,000-step Coqui XTTS v2 fine-tune shipped in evidence/, trainproof returns FAIL with TP-DIVERGE: the loss ended at 0.032 against a floor of 0.017, so the final checkpoint is not the best one. TP-THROUGHPUT also executes, measuring 3.17 steps per second over 39,412 seconds observed, because Coqui logs carry timestamps while HuggingFace trainer_state.json does not.",
+        "evidence": "evidence/xtts_coqui_feb2026"
+      },
+      {
+        "claim": "TP-ZERO-GRAD was producing a false FAIL before 0.14.0. Coqui writes TrainEpochStats/avg_grad_norm as 0.0 when gradient clipping is off, so a healthy 125,000-step XTTS fine-tune whose loss reached 0.017 was condemned as having a severed backward graph. A run cannot both learn and receive no gradient, so the check now stands down when the loss improved by more than the minimum-improvement threshold and records the reason as a skip. The false positive was found by running the shipped rules against a real training run, not by a test.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "CheckContext computes each shared series once - losses, gradient norms, learning rates, step times, eval losses, loader fractions - and carries the ran/skipped bookkeeping. Rules read from it rather than recomputing, so a rule can be read and tested in isolation without reading the ones around it.",
+        "evidence": "src/trainproof/epoch.py:CheckContext"
+      },
+      {
+        "claim": "Rule evaluation order is preserved exactly by the registry, because the golden snapshots encode the sequence in which findings appear. Reordering the registry would change the snapshots even if every individual verdict stayed the same, which is what makes the byte-identical comparison a real test of the refactor rather than a formality.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "The lint ruleset is chosen rather than inherited: E, F, I and B, plus RUF013 (an implicit Optional is a type hint that lies), RUF059, and S110 (try-except-pass). Adopting everything ruff reports by default would make this codebase worse, because several of its opinions contradict deliberate decisions here, so each exclusion is recorded in pyproject.toml with its reason.",
+        "evidence": "pyproject.toml"
+      },
+      {
+        "claim": "BLE001 (blind except) is deliberately not enforced. trainproof catches broad exceptions on purpose when parsing logs it did not write and probing subprocesses that can die in ways Python cannot describe; a narrow except there would let an unforeseen parser error escape as a traceback instead of exit code 2, 'cannot judge'. S110 is enforced instead: catching broadly is acceptable, catching and passing is not.",
+        "evidence": "pyproject.toml"
+      },
+      {
+        "claim": "E501 (line length) is deliberately not enforced. Most long lines in this codebase are evidence and message strings - the text trainproof prints - which are asserted in tests and encoded byte-for-byte in the golden snapshots. Reflowing them to satisfy a column limit would risk changing the tool's output to satisfy a ruler.",
+        "evidence": "pyproject.toml"
       }
     ],
     "limitations": [
@@ -69,6 +248,38 @@
       {
         "claim": "A skipped check reports a prose reason, not a typed one, so a CI job cannot mechanically distinguish a signal that was never in the log from one that is present and degenerate. Typed coverage exists on an unreleased branch and is not in 0.18.1.",
         "evidence": "CONTRACTS.md checks object; CHANGELOG.md 0.19.0 entry, marked unreleased."
+      },
+      {
+        "claim": "The objective checks read the output-layer width, the ignore sentinel and the target ids. They do not read logits, weights or gradients, so they cannot detect a loss that is wrong in any other way - a mis-scaled term, a wrong reduction, or a target built from the wrong field will all pass.",
+        "evidence": "src/trainproof/objective.py"
+      },
+      {
+        "claim": "trainproof judges logs, configuration and now the environment. It still cannot observe model weights, activations, attention statistics or gradients. In particular the 0.17.0 checkpoint check verifies that a checkpoint is structurally complete and readable; it does not read the tensors, so it cannot report NaN weights, dead layers or a shape mismatch against a model definition.",
+        "evidence": "src/trainproof/envcheck.py:check_checkpoint"
+      },
+      {
+        "claim": "A PASS verdict means no mechanical failure was detected, not that the run is good. A model trained on corrupted data can produce a healthy-looking loss curve; detecting that requires comparison against a known-good baseline with trainproof compare.",
+        "evidence": "src/trainproof/report.py"
+      },
+      {
+        "claim": "The env command judges only what it is asked to judge. Every check needs its argument - a module to import, a checkpoint path, a memory requirement, an output directory - and an invocation with none of them reports NOT-CHECKED and exits 2 rather than passing vacuously.",
+        "evidence": "src/trainproof/envcheck.py:check_env"
+      },
+      {
+        "claim": "The memory check compares against a requirement the user supplies. trainproof does not predict how much memory a given model, batch size or sequence length will need, so it cannot warn about a run whose true appetite is unknown or understated.",
+        "evidence": "src/trainproof/envcheck.py:check_memory"
+      },
+      {
+        "claim": "GPU-oriented rules only fire when the log carries the columns they need. HuggingFace trainer_state.json records no step time or loader time, so TP-STEP-CLIFF and TP-LOADER-BOUND cannot execute on a stock HuggingFace run and are reported as skipped with the reason. Coqui and TensorBoard logs carry timestamps, so TP-THROUGHPUT does execute there.",
+        "evidence": "src/trainproof/epoch.py"
+      },
+      {
+        "claim": "TensorBoard event files are read without verifying their CRC footers, because crc32c is not in the Python standard library and adding a dependency to checksum a file that is only being read would contradict the zero-dependency guarantee.",
+        "evidence": "src/trainproof/tfevents.py"
+      },
+      {
+        "claim": "NOT-CHECKED reports that nothing could be measured; it is neither a pass nor a failure, and must not be recorded as an absence of problems.",
+        "evidence": "src/trainproof/epoch.py"
       }
     ]
   },
@@ -112,8 +323,136 @@
     {
       "question": "Is trainproof related to ttsproof or spkproof?",
       "answer": "They are siblings, all MIT and all deterministic: trainproof judges training runs, ttsproof judges text-to-speech output, spkproof measures speaker verification. As of 0.18.1 trainproof's optional speech pack reuses ttsproof's text normalisation, which is why ttsproof appears in the trainproof[speech] extra rather than in the core."
+    },
+    {
+      "question": "What changed in version 0.18.0?",
+      "answer": "0.18.0 adds the first checks that read the training objective instead of the training run. TP-OBJ-IGNORE-INDEX-COLLISION fires when a cross-entropy ignore_index is also a valid class in the output layer; every target with that id is silently dropped from the loss. TP-OBJ-DEAD-CLASS fires when a class the model can emit never appears as a training target. Both run automatically before step 1 through the Hugging Face callback. They exist because of a real failure: a text-to-speech model set its end-of-sequence id and its ignore_index to the same integer and trained for fifteen epochs on a perfectly healthy loss curve while never being taught to stop. A minimal reproduction ends at 0.0035 with the bug and 0.0034 without it. 90 rule IDs, no existing verdict changed."
+    },
+    {
+      "question": "Can trainproof detect a bug that the loss curve cannot show?",
+      "answer": "Yes, as of 0.18.0, for one specific and common class of bug. If a cross-entropy ignore_index is a valid class in the output layer, every target carrying that id is discarded before the loss is computed. The run then trains normally on everything else and its loss curve is indistinguishable from a correct run - measured at 0.0035 versus 0.0034 in a controlled reproduction. No rule that reads loss, gradient norm or learning rate can separate those two runs. TP-OBJ-IGNORE-INDEX-COLLISION decides it from two integers at step 0."
+    },
+    {
+      "question": "What changed in version 0.15.0?",
+      "answer": "0.15.0 adds 'trainproof env', an environment preflight that runs before the GPU is touched. Until this version every check read a training log, which means the run had already started and the hours were already spent - and the most expensive failures never reach a log at all: a training stack that will not import, a checkpoint that cannot be deserialised, a first batch that exhausts system RAM. It adds 22 rule IDs under the TP-ENV- prefix, taking the total from 62 to 84, and changes no existing rule, threshold or verdict. Tests went from 210 to 228."
+    },
+    {
+      "question": "What does trainproof env actually check?",
+      "answer": "Four families. Imports: it imports the training entrypoint in a subprocess and reports the exact exception, message and raising file, distinguishing an ImportError from a native crash and from a hang. Checkpoints: it verifies a .pt, .pth or .ckpt is structurally complete - present, non-empty, not truncated, CRC intact - without deserialising it. Memory: available system RAM against a declared requirement, with a headroom threshold. Disk: free space against checkpoint size times checkpoints kept. Every check is standard-library only; none needs a GPU, a network or an ML framework."
+    },
+    {
+      "question": "Why does the import check run in a subprocess instead of just importing the module?",
+      "answer": "Because the failures it is looking for are violent. A segfaulting extension module, a CUDA abort, or a library calling os._exit during import would all kill an in-process linter outright, and the user would learn nothing except that trainproof died. Out of process, trainproof survives the crash and can report it - including the case where the interpreter dies with no Python exception at all, which is reported as TP-ENV-IMPORT-CRASH and named as a native fault rather than misreported as an ImportError."
+    },
+    {
+      "question": "Does trainproof load a checkpoint to inspect it?",
+      "answer": "No, and deliberately. torch.load executes arbitrary code by design - that is why torch 2.6 changed weights_only to default True - so a tool that must run the file it is inspecting is not a safety tool. A torch checkpoint is a ZIP archive, so trainproof reads the archive directory: the entry table, the tensor-storage count and the CRC. Nothing inside is ever unpickled or executed, which means a corrupt or hostile checkpoint can be inspected safely."
+    },
+    {
+      "question": "Can trainproof tell me if my checkpoint has NaN weights?",
+      "answer": "Not at 0.17.0. The checkpoint check verifies that a checkpoint is structurally sound - present, non-empty, not truncated, CRC intact, and a real torch archive - but it does not read the tensor values, so it cannot report NaN weights, dead layers, or a shape mismatch against a model definition. Reading weights safely without unpickling is possible from the same archive and is not implemented at this version."
+    },
+    {
+      "question": "Why does trainproof check system RAM rather than GPU memory?",
+      "answer": "Because system RAM is the resource whose exhaustion cannot be recovered from. A GPU running out of memory raises a clean out-of-memory error and the run fails; on Windows the driver instead spills to system RAM, so exhausting it pages the machine until the desktop stops responding and the only recovery is a hard reset. The check compares available system RAM against a requirement the user supplies, and warns when the margin is thin rather than only when it is already exceeded."
+    },
+    {
+      "question": "What happens if trainproof env cannot measure something?",
+      "answer": "It says so, and the report is NOT-CHECKED rather than PASS. Memory that cannot be determined on a platform is TP-ENV-MEM-UNKNOWN; an interpreter that cannot be run is TP-ENV-PYTHON-UNUSABLE; a working directory that does not exist is TP-ENV-CWD-MISSING, and no subprocess is started. An unmeasurable machine is never recorded as a machine with no problems, and an invocation given nothing to judge exits 2 rather than passing vacuously."
+    },
+    {
+      "question": "Why does trainproof env have a --cwd flag?",
+      "answer": "Because editable installs and source checkouts resolve relative to the working directory. Probing from somewhere else reports 'No module named X' for a package that imports perfectly where training actually launches - a false FAIL, and the worst kind, because it blames the user's environment for the linter's own mistake. --cwd makes the probe run from the directory the training command runs from."
+    },
+    {
+      "question": "Did 0.15.0 change any existing rule or break the JSON contract?",
+      "answer": "No. schema_version remains 3, the verdict enum is unchanged, and no existing rule, threshold or verdict moved. All 22 new rule IDs are under the TP-ENV- prefix and belong to the new command. 0.15.0 is a minor bump because it adds a capability, not because it breaks one."
+    },
+    {
+      "question": "What does trainproof detect?",
+      "answer": "Before a run: malformed datasets, tokenizer problems, and now an environment that cannot start the run - a stack that will not import, an unreadable checkpoint, insufficient RAM or disk. During a run: a live guardian polling the log. After a run: divergence, NaN and Inf losses, flatlined curves, dead runs that never improve, gradient spikes, all-zero gradients, zero or absent learning rates, overfitting where evaluation loss climbs while training loss falls, throughput and step-time anomalies, and regressions against a baseline. Every finding carries a stable TP-* identifier and the evidence that produced it."
+    },
+    {
+      "question": "Which training frameworks has trainproof been validated against?",
+      "answer": "Three. HuggingFace Trainer is covered by a fault-injection gallery of six configurations across three seeds, each breaking one knob deliberately. Coqui XTTS v2 and PyTorch Lightning via Fish Speech are covered by real fine-tunes on an RTX 5080 whose logs ship in evidence/. One of those runs ships as both a text log and the TensorBoard event file written by the same training; two independent parsers produce the identical verdict, and the evidence generator computes that agreement rather than asserting it."
+    },
+    {
+      "question": "Does trainproof require a GPU, an ML framework, or specific hardware?",
+      "answer": "No. It parses scalar metric records, configuration and now environment state, and runs with no ML framework, no network client and no telemetry. It needs no GPU and no access to the model. The environment preflight added in 0.15.0 preserves this - it uses only zipfile, ctypes, struct and subprocess from the standard library - and the TensorBoard reader added in 0.14.0 decodes the event format directly rather than importing the libraries that write it."
+    },
+    {
+      "question": "What commands does trainproof expose?",
+      "answer": "Eight: data and tokenizer for dataset and tokenizer preflight, preflight for LLM fine-tuning datasets, env for environment preflight, epoch for a first-epoch verdict, doctor for a zero-config autopsy of training logs (aliased as diagnose), compare to judge a run against a baseline, and watch as a live guardian that polls a log while training runs. They cover the phases before, during and after a run."
+    },
+    {
+      "question": "What are trainproof's limitations?",
+      "answer": "It judges logs, configuration and environment. It cannot observe weights, activations, attention statistics or gradients, and the 0.17.0 checkpoint check reads structure rather than tensor values, so NaN weights are out of scope. A PASS does not certify a good run. Rules whose columns are absent from a log cannot execute and are reported as skipped with a reason. The memory check compares against a requirement the user supplies - trainproof does not predict how much memory a model, batch size or sequence length will need. TensorBoard CRC footers are not verified, because checksumming a file being read is not worth a dependency."
+    },
+    {
+      "question": "How is trainproof tested?",
+      "answer": "228 tests at 0.17.0, up from 210 at 0.14.0, collected with python -m pytest --collect-only -q. Golden snapshots act as a regression suite, contract tests assert that the rule identifiers in the source and in RULES.md match in both directions, and EVIDENCE_MATRIX.md is regenerated from the shipped logs so a drifted verdict fails rather than going unnoticed. The environment tests build every fixture from a temporary directory and require no GPU, no network and no real model."
+    },
+    {
+      "question": "What Python versions does trainproof support?",
+      "answer": "Python 3.10 and later, declared as requires-python >=3.10 in pyproject.toml."
+    },
+    {
+      "question": "Is EVIDENCE_MATRIX.md written by hand?",
+      "answer": "No. It is generated by scripts/regenerate_evidence.py, and the file carries a header saying so. Every verdict in it is computed by running the shipped rules over the shipped logs at generation time, and the derived observations at the bottom - including the check that two independent readers of the same XTTS run agree - are computed rather than asserted. It used to be maintained by hand and drifted, carrying verdicts from v0.3-dev long after the rules had changed."
+    },
+    {
+      "question": "Can trainproof read a PyTorch Lightning training run?",
+      "answer": "Yes, through its TensorBoard event-file reader added in 0.14.0. Lightning writes its scalars to events.out.tfevents files and nowhere else, so before that reader existed a Lightning run could overfit for hours with nothing for trainproof to judge. The reader is written from the wire format and imports no tensorflow, tensorboard, protobuf, torch or numpy; it is validated byte-exact against tensorboard's own EventAccumulator. Lightning console output remains unsupported because it is a TTY dump, not a log - the event file beside it is the real record."
+    },
+    {
+      "question": "Why is a run that fails to start worth a whole release?",
+      "answer": "Because it is the failure mode with no log to inspect afterwards, and therefore the one every log-based tool is blind to. A stack that will not import, a checkpoint that segfaults its own loader, and a first batch that exhausts system memory all produce zero training steps and zero recorded metrics, while still costing setup time, GPU reservation and in the memory case a machine that has to be hard-reset. Those three failures happened in one day on a single run that never logged a step, which is what the release is built from."
+    },
+    {
+      "question": "What does trainproof say about a training run whose loss is exactly 0.0 on every logged step?",
+      "answer": "It fails the run with TP-ZERO-LOSS. A loss that is exactly zero on every step is not a perfect model, it is the log signature of a labels bug - typically every label masked to -100 - so the run learned nothing. It matters because each loss-shape check is guarded against dividing by zero, so before this rule existed all of them skipped silently, the verdict stayed PASS, and the report then listed those same skipped checks as having run. A run that learned nothing was passed and told which checks had cleared it."
+    },
+    {
+      "question": "My fine-tune logs a gradient norm of exactly zero on every step. Would trainproof catch that?",
+      "answer": "Yes - TP-ZERO-GRAD, at FAIL, provided the loss did not improve. An all-zero gradient norm means no gradient reached the weights: the backward graph is severed or every parameter is frozen. With PEFT the usual cause is reentrant gradient checkpointing over frozen input embeddings, which detaches the graph before it reaches the adapters; enable_input_require_grads() or use_reentrant=False fixes it. The rule deliberately stands down when the loss demonstrably improved, because a run cannot both learn and receive no gradient - some frameworks, Coqui among them, log an aggregate gradient norm as 0.0 when clipping is off."
+    },
+    {
+      "question": "If a run has a loss floor of zero, can it come out ahead of a healthy baseline when compared?",
+      "answer": "No. TP-CMP-UNCOMPARABLE refuses the comparison. A loss floor of zero beats any baseline arithmetically, so a run that learned nothing would otherwise be reported as favourable against a healthy one. Rather than return a flattering number, trainproof states that there is no usable loss scale to compare on."
+    },
+    {
+      "question": "What did trainproof actually find on the Fish Speech fine-tune shipped as evidence?",
+      "answer": "WARN, with TP-OVERFIT. Evaluation loss bottomed out at 9.23 at step 99 and climbed to 16.19 by step 2049, while training loss kept falling to 2.84 - the model was memorising rather than generalising. The best checkpoint was therefore early in the run, and every checkpoint saved to disk comes from step 1600 or later, all of them well past the turn. TP-THROUGHPUT also executes on that log, at 0.22 steps per second."
+    },
+    {
+      "question": "Why did the TP-ZERO-GRAD rule change, and was it wrong before?",
+      "answer": "It was wrong before, and the fix shipped in 0.14.0. The rule condemned any run whose finite gradient norms were all exactly 0.0, reporting a severed backward graph. Coqui writes its aggregate avg_grad_norm as 0.0 when gradient clipping is off, so a healthy 125,000-step XTTS fine-tune whose loss reached 0.017 was reported FAIL. A run cannot both learn and receive no gradient, so the check now stands down when the loss improved and records the reason as a skip, while staying armed when the loss is stuck. It was found by running the shipped rules against a real training run rather than by a test."
+    },
+    {
+      "question": "How does trainproof stop its own documentation from drifting away from its test results?",
+      "answer": "EVIDENCE_MATRIX.md is generated by scripts/regenerate_evidence.py rather than written, and the file carries a header saying so. Every verdict in it is computed by running the shipped rules over the shipped logs at generation time, and the derived observations at the bottom are computed too - including the check that two independent readers of the same XTTS run agree. A --check mode fails the build when the file no longer matches the gallery. It used to be maintained by hand and drifted, publishing v0.3-dev verdicts against a v0.10 engine. Separately, a contract test asserts that the rule IDs in the source and in RULES.md match in both directions."
+    },
+    {
+      "question": "What changed in version 0.16.0?",
+      "answer": "The structure of the single-run rules, and nothing else. Every rule used to live inside one function, check_records(), which also computed the statistics the other rules depended on - so adding a check raised the risk to every check already there. Each rule is now a standalone function taking a CheckContext and returning findings, and check_records() builds the context and runs a registry in order. No rule, threshold, verdict, evidence string or output shape changed: 84 rule IDs and 228 tests, both unchanged, and schema_version stays 3."
+    },
+    {
+      "question": "How do you know the 0.16.0 refactor did not change any verdict?",
+      "answer": "Because it is checked, not claimed. All 38 golden snapshots are byte-identical to 0.15.0, the evidence matrix regenerates unchanged (scripts/regenerate_evidence.py --check exits 0), and the same 228 tests pass with none of them modified. Rule evaluation order is part of that guarantee, since the snapshots encode the sequence findings appear in - reordering the registry would change them even if every individual verdict stayed the same. A refactor of judging logic that cannot prove it changed nothing is indistinguishable from a silent regression, which is why the release ships alone rather than alongside a new check."
+    },
+    {
+      "question": "What changed in version 0.17.0?",
+      "answer": "A lint gate, and one real defect it helped surface. Lint had never been part of the release ritual - no [tool.ruff] section, ruff not a dependency, 103 findings against inherited defaults - and the repository now reports zero with a ruleset chosen deliberately rather than inherited. The defect: a log that raised while doctor was discovering candidate files was swallowed silently, so it never became a candidate and never reached the 'could not be parsed and were NOT judged' note. A file visible on disk could be absent from the report and indistinguishable from one that passed."
+    },
+    {
+      "question": "Which lint rules does trainproof deliberately not enforce, and why?",
+      "answer": "Three, each for a stated reason. BLE001 (blind except): trainproof catches broad exceptions on purpose when parsing logs it did not write and probing subprocesses that can die in ways Python cannot describe - a narrow except would let an unforeseen error escape as a traceback instead of exit code 2. S110 (try-except-pass) is enforced instead, because catching broadly is fine and catching then passing is not. PLW1510 (subprocess without check): every subprocess call inspects returncode itself and turns it into a finding, so check=True would raise instead, the opposite of the required behaviour. E501 (line length): most long lines are the evidence strings trainproof prints, which are asserted in tests and encoded in the golden snapshots, so reflowing them risks changing output to satisfy a ruler."
+    },
+    {
+      "question": "Can a training log ever be missing from a trainproof report without being mentioned?",
+      "answer": "Not since 0.17.0. Logs that cannot be parsed are listed explicitly as 'could not be parsed and were NOT judged'. Before 0.17.0 that note covered only failures in the judging pass; a file that raised during directory discovery was dropped silently and never appeared anywhere, which made it indistinguishable from a log that passed. Both passes now feed the same note, and a regression test verified to fail without the fix keeps it that way."
     }
   ],
-  "generated_by": "hand-authored for 0.18.1 from CHANGELOG, source and the test suite; counts measured from the repo",
+  "generated_by": "hand-authored for 0.18.1 from CHANGELOG, source and the test suite; claims still true at 0.18.1 carried forward from the 0.18.0 golden; counts measured from the repo",
   "generated_at": "2026-08-22T05:40:00Z"
 }
