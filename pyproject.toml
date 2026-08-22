@@ -6,16 +6,18 @@ authors = [{name = "Panagiotis (Panos) Gkilis", email = "bedvibe@bedvibe.studio"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
-dependencies = [
-    "numpy",
-    "soundfile",
-    "ttsproof"
-]
+# The core - epoch log linter, adapters, tfevents reader, rules, reports - has
+# no runtime dependencies at all. The tfevents reader is written from the wire
+# format precisely so that reading a TensorBoard log needs no TensorFlow.
+dependencies = []
 
 [project.optional-dependencies]
 # The lint gate runs in release.ps1, so the linter has to be installable with
 # the project rather than assumed present on the machine that cuts a release.
 dev = ["pytest", "ruff>=0.16"]
+# The speech/TTS pack. soundfile needs libsndfile, a C library, so this is not
+# something to install on the way to linting a text log.
+speech = ["numpy", "soundfile", "ttsproof"]
 
 [project.scripts]
 trainproof = "trainproof.cli:main"

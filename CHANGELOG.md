@@ -4,6 +4,33 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## 0.18.1 - unreleased
+
+### Fixed
+
+- **The core no longer requires numpy, soundfile or ttsproof.** All three were
+  hard runtime dependencies, used by exactly one module - `speech/data.py` - and
+  `cli.py` imported it at module scope. So `pip install trainproof` pulled an
+  audio stack, and `trainproof epoch` on a text log would not start without
+  libsndfile, the C library behind soundfile. For a tool whose tfevents reader is
+  written from the wire format specifically to avoid TensorFlow, that was the
+  wrong shape.
+
+  `dependencies` is now empty. The three moved to a `trainproof[speech]` extra,
+  `check_data` resolves lazily through a module `__getattr__`, and `cli.py`
+  imports it inside the `data` subcommand. `check_tokenizer` is stdlib-only and
+  is unaffected.
+
+  A core install that lacks the extra and calls a speech check gets a legible
+  error naming `pip install 'trainproof[speech]'`, not a bare ImportError.
+
+### Added
+
+- `tests/test_core_install.py`: blocks numpy, soundfile and ttsproof from the
+  import system in a fresh interpreter and asserts that twelve core modules and
+  the `epoch` CLI still work. A stray top-level import cannot quietly
+  reintroduce the coupling.
+
 ## [0.18.0] — 2026-08-09 — the objective release
 
 Every rule shipped so far reads the training run: the loss curve, the gradient norms, the learning rate, the timing. This release adds the first rules that read the **objective itself** — the output layer, the ignore sentinel, and which classes actually reach the loss as positive targets. They are deliberately independent of the curve, because the failure that motivated them is invisible to it.

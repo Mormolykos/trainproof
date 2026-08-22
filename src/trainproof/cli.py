@@ -14,7 +14,6 @@ from .report import (
     print_verdict_console,
     write_html_report,
 )
-from .speech.data import check_data
 from .speech.tokenizer import check_tokenizer
 from .watch import watch_loop
 
@@ -192,6 +191,11 @@ def _run():
     report_dict = {}
 
     if args.command == "data":
+        # Imported here, not at module scope: this is the only path that
+        # needs numpy/soundfile/ttsproof, and importing it eagerly made
+        # `trainproof epoch` require an audio stack it never touches.
+        from .speech.data import check_data
+
         report_dict = check_data(args.input)
     elif args.command == "tokenizer":
         report_dict = check_tokenizer(args.model, args.transcripts)

@@ -3,9 +3,15 @@ import json
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-import soundfile as sf
-from ttsproof.normalize import normalize_text, plain_token
+try:
+    import numpy as np
+    import soundfile as sf
+    from ttsproof.normalize import normalize_text, plain_token
+except ImportError as exc:  # pragma: no cover - exercised by test_core_install
+    raise ImportError(
+        "trainproof's speech pack needs numpy, soundfile and ttsproof, which "
+        "are not part of a core install. Run:  pip install 'trainproof[speech]'"
+    ) from exc
 
 from .. import rules
 
