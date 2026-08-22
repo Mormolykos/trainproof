@@ -69,6 +69,23 @@ answer "was this actually checked?" — a skipped check is not a passed check.
 INFO-only observations are not accounted for in `checks`, because a missing one
 cannot imply a clean result.
 
+Since 0.19.0 `checks` also carries **`coverage`**: one typed row per check group,
+alongside `ran` and `skipped` and never replacing them. Each row has `target`,
+`coverage`, `owner`, `permanence`, and — for anything not `CHECKED` — a `reason`
+drawn from a registered vocabulary plus the original prose in `detail`.
+
+The states come from [notchecked](https://github.com/Mormolykos/notchecked). The
+distinction `skipped` could not express: `no finite gradient norms in the log`
+means the column was never there, while `median gradient norm is zero` means it
+is there and degenerate. Same group, same field, opposite remediations — a human
+tells them apart, a CI job counting `skipped` cannot.
+
+A skip that reaches the report without a code is recorded as
+`NOT_CHECKED/CHECKER_FAILED` — a bug in trainproof, not a fact about the log. It
+is never reconstructed by matching the prose back to a category.
+
+**This is an added optional key, so `schema_version` stays at 3.**
+
 When `error` is non-null, trainproof could not judge: `reports` is empty,
 `worst_verdict` is `null`, and the exit code is `2`.
 

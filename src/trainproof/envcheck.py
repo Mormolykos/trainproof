@@ -33,6 +33,7 @@ import sys
 import zipfile
 from pathlib import Path
 
+from . import coverage as cov
 from . import rules
 
 # --------------------------------------------------------------------- memory
@@ -368,18 +369,21 @@ def check_env(module: str | None = None, checkpoint: str | None = None,
     findings: list[dict] = []
     ran: list[str] = []
     skipped: dict[str, str] = {}
+    codes: dict[str, str] = {}
 
     if module:
         findings += check_import(module, python=python, cwd=cwd)
         ran.append("import")
     else:
         skipped["import"] = "no --module given"
+        codes["import"] = cov.NOT_REQUESTED.code
 
     if checkpoint:
         findings += check_checkpoint(checkpoint)
         ran.append("checkpoint")
     else:
         skipped["checkpoint"] = "no --checkpoint given"
+        codes["checkpoint"] = cov.NOT_REQUESTED.code
 
     findings += check_memory(required_gb)
     ran.append("memory")
@@ -389,6 +393,7 @@ def check_env(module: str | None = None, checkpoint: str | None = None,
         ran.append("disk")
     else:
         skipped["disk"] = "no --output-dir given"
+        codes["disk"] = cov.NOT_REQUESTED.code
 
     levels = {f["level"] for f in findings}
     if "FAIL" in levels:
@@ -403,5 +408,9 @@ def check_env(module: str | None = None, checkpoint: str | None = None,
     return {
         "verdict": verdict,
         "findings": findings,
-        "checks": {"ran": sorted(ran), "skipped": skipped},
+        "checks": {
+            "ran": sorted(ran),
+            "skipped": skipped,
+            "coverage": cov.coverage_records(ran, skipped, codes),
+        },
     }

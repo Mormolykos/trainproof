@@ -2,6 +2,7 @@ import math
 from pathlib import Path
 from typing import Any
 
+from . import coverage as cov
 from . import rules
 from .adapters import parse_log_with_format
 
@@ -26,8 +27,13 @@ CHECK_GROUPS = (
 )
 
 
-def _nothing_ran(reason: str) -> dict[str, Any]:
-    return {"ran": [], "skipped": {g: reason for g in CHECK_GROUPS}}
+def _nothing_ran(reason: str, code: str = cov.UNREADABLE.code) -> dict[str, Any]:
+    skipped = {g: reason for g in CHECK_GROUPS}
+    return {
+        "ran": [],
+        "skipped": skipped,
+        "coverage": cov.coverage_records([], skipped, {g: code for g in CHECK_GROUPS}),
+    }
 
 
 class CheckContext:
@@ -35,6 +41,7 @@ class CheckContext:
         self.records = records
         self.ran = []
         self.skipped = {}
+        self.codes = {}
         self.losses = []
         self.loss_steps = []
         self.lrs = []
@@ -90,8 +97,17 @@ class CheckContext:
     def ok(self, group: str) -> None:
         self.ran.append(group)
 
-    def no(self, group: str, reason: str) -> None:
+    def no(self, group: str, reason: str, code: str | None = None) -> None:
+        """Record a skip, with the coverage code the check chose for it.
+
+        `code` is optional only so that an out-of-tree check cannot break on
+        upgrade. Every check in this file supplies one, and a skip that reaches
+        the report without a code is reported as CHECKER_FAILED rather than
+        guessed at -- guessing is how a reconstruction quietly becomes wrong.
+        """
         self.skipped[group] = reason
+        if code is not None:
+            self.codes[group] = code
 
 
 def check_nan(ctx: CheckContext) -> list[dict]:
@@ -116,12 +132,12 @@ def check_zero_loss(ctx: CheckContext) -> list[dict]:
                 ),
             }]
     else:
-        ctx.no("zero-loss", f"fewer than {rules.MIN_POINTS_FOR_DEGENERATE_CHECK} finite loss points")
+        ctx.no("zero-loss", f"fewer than {rules.MIN_POINTS_FOR_DEGENERATE_CHECK} finite loss points", cov.TOO_FEW_POINTS.code)
     return []
 
 def check_flat_loss(ctx: CheckContext) -> list[dict]:
     if not ctx.valid_losses:
-        ctx.no("flat-loss", "every logged loss is NaN or Inf")
+        ctx.no("flat-loss", "every logged loss is NaN or Inf", cov.NO_FINITE_VALUES.code)
         return []
     mean_loss = sum(ctx.valid_losses) / len(ctx.valid_losses)
     std_loss = math.sqrt(sum((v - mean_loss)**2 for v in ctx.valid_losses) / len(ctx.valid_losses))
@@ -130,12 +146,12 @@ def check_flat_loss(ctx: CheckContext) -> list[dict]:
         if (std_loss / mean_loss) < rules.MIN_LOSS_VARIATION:
             return [{"id": "TP-FLAT", "level": "FAIL", "message": "Loss curve is completely flat (dead run).", "evidence": f"Variation {std_loss/mean_loss:.5f} < {rules.MIN_LOSS_VARIATION}"}]
     else:
-        ctx.no("flat-loss", "mean loss is not positive - relative variation is undefined")
+        ctx.no("flat-loss", "mean loss is not positive - relative variation is undefined", cov.NO_SCALE.code)
     return []
 
 def check_divergence(ctx: CheckContext) -> list[dict]:
     if not ctx.valid_losses:
-        ctx.no("divergence", "every logged loss is NaN or Inf")
+        ctx.no("divergence", "every logged loss is NaN or Inf", cov.NO_FINITE_VALUES.code)
         return []
     nonzero_losses = [v for v in ctx.valid_losses if v != 0.0]
     min_loss = min(nonzero_losses) if nonzero_losses else 0.0
@@ -144,12 +160,12 @@ def check_divergence(ctx: CheckContext) -> list[dict]:
         if ctx.valid_losses[-1] > min_loss * rules.MAX_LOSS_DIVERGENCE_RATIO:
             return [{"id": "TP-DIVERGE", "level": "FAIL", "message": "Loss curve is diverging.", "evidence": f"End loss {ctx.valid_losses[-1]:.3f} vs Min loss {min_loss:.3f}"}]
     else:
-        ctx.no("divergence", "no positive loss to measure a floor against")
+        ctx.no("divergence", "no positive loss to measure a floor against", cov.NO_SCALE.code)
     return []
 
 def check_dead_run(ctx: CheckContext) -> list[dict]:
     if not ctx.valid_losses:
-        ctx.no("dead-run", "every logged loss is NaN or Inf")
+        ctx.no("dead-run", "every logged loss is NaN or Inf", cov.NO_FINITE_VALUES.code)
         return []
     if len(ctx.valid_losses) >= rules.MIN_POINTS_FOR_IMPROVEMENT_CHECK:
         w = rules.LOSS_IMPROVEMENT_WINDOW
@@ -161,9 +177,9 @@ def check_dead_run(ctx: CheckContext) -> list[dict]:
                 return [{"id": "TP-DEAD-RUN", "level": "FAIL", "message": "Loss never improved over the run (dead run).",
                                  "evidence": f"median of first {w} losses {start_med:.3f} vs last {w} {end_med:.3f} (needs >={rules.MIN_LOSS_IMPROVEMENT*100:.0f}% improvement)"}]
         else:
-            ctx.no("dead-run", "starting loss is not positive - relative improvement is undefined")
+            ctx.no("dead-run", "starting loss is not positive - relative improvement is undefined", cov.NO_SCALE.code)
     else:
-        ctx.no("dead-run", f"fewer than {rules.MIN_POINTS_FOR_IMPROVEMENT_CHECK} finite loss points")
+        ctx.no("dead-run", f"fewer than {rules.MIN_POINTS_FOR_IMPROVEMENT_CHECK} finite loss points", cov.TOO_FEW_POINTS.code)
     return []
 
 def check_zero_grad(ctx: CheckContext) -> list[dict]:
@@ -176,7 +192,8 @@ def check_zero_grad(ctx: CheckContext) -> list[dict]:
             ctx.no("zero-grad",
                f"all {len(ctx.valid_gns)} gradient norms are 0.0 but the loss improved from "
                f"{_nz_losses[0]:.4f} to {min(_nz_losses):.4f} - the log is reporting an "
-               "aggregate, not the true gradient norm")
+               "aggregate, not the true gradient norm",
+               cov.STOOD_DOWN.code)
         elif all(g == 0.0 for g in ctx.valid_gns):
             ctx.ok("zero-grad")
             return [{
@@ -194,9 +211,9 @@ def check_zero_grad(ctx: CheckContext) -> list[dict]:
         else:
             ctx.ok("zero-grad")
     elif not ctx.valid_gns:
-        ctx.no("zero-grad", "no finite gradient norms in the log")
+        ctx.no("zero-grad", "no finite gradient norms in the log", cov.NO_COLUMN.code)
     else:
-        ctx.no("zero-grad", f"fewer than {rules.MIN_POINTS_FOR_DEGENERATE_CHECK} finite gradient norms")
+        ctx.no("zero-grad", f"fewer than {rules.MIN_POINTS_FOR_DEGENERATE_CHECK} finite gradient norms", cov.TOO_FEW_POINTS.code)
     return []
 
 def check_grad_spike(ctx: CheckContext) -> list[dict]:
@@ -209,11 +226,11 @@ def check_grad_spike(ctx: CheckContext) -> list[dict]:
             if spikes:
                 return [{"id": "TP-GRAD-SPIKE", "level": "WARN", "message": "Gradient norm spikes detected.", "evidence": f"Max gn {max(spikes):.2f} > {rules.MAX_GRAD_NORM_SPIKE_RATIO}x median ({median_gn:.2f})"}]
         else:
-            ctx.no("grad-spike", "median gradient norm is zero - no scale to measure a spike against")
+            ctx.no("grad-spike", "median gradient norm is zero - no scale to measure a spike against", cov.NO_SCALE.code)
     elif not ctx.valid_gns:
-        ctx.no("grad-spike", "no finite gradient norms in the log")
+        ctx.no("grad-spike", "no finite gradient norms in the log", cov.NO_COLUMN.code)
     else:
-        ctx.no("grad-spike", "fewer than 6 finite gradient norms")
+        ctx.no("grad-spike", "fewer than 6 finite gradient norms", cov.TOO_FEW_POINTS.code)
     return []
 
 def check_lr(ctx: CheckContext) -> list[dict]:
@@ -226,7 +243,7 @@ def check_lr(ctx: CheckContext) -> list[dict]:
         elif zero_frac > rules.MAX_ZERO_LR_FRACTION:
             return [{"id": "TP-ZERO-LR-PARTIAL", "level": "WARN", "message": "Learning rate is zero for a large fraction of the run.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"}]
     else:
-        ctx.no("lr", "no learning-rate column in the log")
+        ctx.no("lr", "no learning-rate column in the log", cov.NO_COLUMN.code)
     return []
 
 def check_throughput(ctx: CheckContext) -> list[dict]:
@@ -268,9 +285,9 @@ def check_overfit(ctx: CheckContext) -> list[dict]:
                         "evidence": f"eval_loss min {eval_min:.2f} @step{int(min_step)} rose to {med_last_3:.2f} ({ratio:.1f}x > {rules.OVERFIT_RATIO}) over the last 3 evals while train_loss fell to {ctx.valid_losses[-1]:.2f} - best checkpoint was near step {int(min_step)}."
                     }]
     elif not ctx.eval_losses:
-        ctx.no("overfit", "no eval_loss in the log - this run has no generalisation signal at all")
+        ctx.no("overfit", "no eval_loss in the log - this run has no generalisation signal at all", cov.NO_COLUMN.code)
     else:
-        ctx.no("overfit", f"fewer than {rules.OVERFIT_MIN_EVALS} eval points")
+        ctx.no("overfit", f"fewer than {rules.OVERFIT_MIN_EVALS} eval points", cov.TOO_FEW_POINTS.code)
     return []
 
 def check_step_time(ctx: CheckContext) -> list[dict]:
@@ -290,11 +307,11 @@ def check_step_time(ctx: CheckContext) -> list[dict]:
                 return [{"id": "TP-STEP-CLIFF", "level": "WARN", "message": "Step time cliff detected: recent steps are significantly slower.",
                                  "evidence": f"median recent step_time {med_last_20:.2f}s > {rules.STEP_TIME_CLIFF_RATIO}x median early step_time ({med_first_50:.2f}s)"}]
         else:
-            ctx.no("step-time", "median early step_time is zero - no baseline to compare against")
+            ctx.no("step-time", "median early step_time is zero - no baseline to compare against", cov.NO_SCALE.code)
     elif not ctx.step_times:
-        ctx.no("step-time", "no step_time column in the log")
+        ctx.no("step-time", "no step_time column in the log", cov.NO_COLUMN.code)
     else:
-        ctx.no("step-time", "fewer than 10 step_time points")
+        ctx.no("step-time", "fewer than 10 step_time points", cov.TOO_FEW_POINTS.code)
     return []
 
 def check_loader(ctx: CheckContext) -> list[dict]:
@@ -305,7 +322,7 @@ def check_loader(ctx: CheckContext) -> list[dict]:
             return [{"id": "TP-LOADER-BOUND", "level": "WARN", "message": "Dataloader stall detected: spending too much time loading data.",
                              "evidence": f"median loader_time/step_time {med_frac*100:.1f}% > {rules.LOADER_FRACTION_MAX*100:.1f}%"}]
     else:
-        ctx.no("loader", "no loader_time/step_time pair in the log")
+        ctx.no("loader", "no loader_time/step_time pair in the log", cov.NO_COLUMN.code)
     return []
 
 def check_gpu_util(ctx: CheckContext) -> list[dict]:
@@ -384,7 +401,14 @@ def check_records(records: list[dict]) -> dict[str, Any]:
     return {
         "verdict": verdict,
         "findings": findings,
-        "checks": {"ran": sorted(ctx.ran), "skipped": ctx.skipped},
+        "checks": {
+            "ran": sorted(ctx.ran),
+            "skipped": ctx.skipped,
+            # Added alongside `ran`/`skipped`, never replacing them: a typed row
+            # per check group, so a CI job can tell a degenerate signal from a
+            # column the log never carried without parsing prose.
+            "coverage": cov.coverage_records(ctx.ran, ctx.skipped, ctx.codes),
+        },
     }
 
 def check_epoch(log_path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] | None = None) -> dict[str, Any]:

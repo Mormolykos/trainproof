@@ -4,6 +4,30 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## 0.19.0 - unreleased
+
+### Added
+
+- `checks.coverage` on every single-run report: one typed row per check group,
+  carrying the coverage state, who owns the gap, whether it can ever change, and
+  a reason code from a registered vocabulary. Sits **alongside** `ran` and
+  `skipped`, which are unchanged, so no existing consumer sees a difference.
+  `schema_version` stays at 3 — an added optional key is a minor change.
+- Dependency on [notchecked](https://github.com/Mormolykos/notchecked), which
+  supplies the states. trainproof is its first adopter.
+
+### Why
+
+`skipped` was a map of group to a prose reason. Two skips from one group could
+mean opposite things — `no finite gradient norms in the log` is a column that was
+never there, `median gradient norm is zero` is a column that is there and
+unusable. The first says accept the gap or change your logger; the second says
+the data cannot support this check. A CI job counting `skipped` could not tell
+them apart.
+
+**Not released.** `notchecked` is not on PyPI yet, so this cannot ship without
+breaking installs.
+
 ## [0.18.0] — 2026-08-09 — the objective release
 
 Every rule shipped so far reads the training run: the loss curve, the gradient norms, the learning rate, the timing. This release adds the first rules that read the **objective itself** — the output layer, the ignore sentinel, and which classes actually reach the loss as positive targets. They are deliberately independent of the curve, because the failure that motivated them is invisible to it.
