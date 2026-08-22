@@ -4,7 +4,7 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
-## 0.18.1 - unreleased
+## 0.18.1 - 2026-08-22
 
 ### Fixed
 
