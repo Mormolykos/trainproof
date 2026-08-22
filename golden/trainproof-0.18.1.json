@@ -1,0 +1,119 @@
+{
+  "project": "trainproof",
+  "version": "0.18.1",
+  "release_date": "2026-08-22",
+  "verified": {
+    "test_count": 274,
+    "test_command": "python -m pytest --collect-only -q",
+    "python_requires": ">=3.10",
+    "commands": [
+      { "name": "data", "purpose": "Dataset preflight for speech/TTS corpora. Needs the trainproof[speech] extra." },
+      { "name": "tokenizer", "purpose": "Tokenizer preflight. Standard library only." },
+      { "name": "epoch", "purpose": "First-epoch verdict from training logs." },
+      { "name": "doctor", "purpose": "Flagship zero-config autopsy of training logs." },
+      { "name": "diagnose", "purpose": "Alias of doctor." },
+      { "name": "compare", "purpose": "Compare a run log against a baseline log." },
+      { "name": "watch", "purpose": "Live guardian: poll a training log." },
+      { "name": "preflight", "purpose": "Pre-flight linter for LLM fine-tuning datasets." },
+      { "name": "env", "purpose": "Environment preflight: can this machine start this run?" }
+    ],
+    "features_added": [
+      {
+        "claim": "0.18.1 is a packaging fix and adds no rules. The core has no runtime dependencies at all: pyproject declares dependencies = []. numpy, soundfile and ttsproof moved to an optional trainproof[speech] extra.",
+        "evidence": "pyproject.toml: dependencies = []; [project.optional-dependencies] speech = [\"numpy\", \"soundfile\", \"ttsproof\"]"
+      },
+      {
+        "claim": "check_data is resolved lazily through a module __getattr__ on trainproof.speech, and cli.py imports it inside the data subcommand rather than at module scope. check_tokenizer is standard-library only and is imported normally.",
+        "evidence": "src/trainproof/speech/__init__.py defines __getattr__; src/trainproof/cli.py imports check_data inside the data branch. tests/test_core_install.py::test_lazy_attribute_does_not_hide_real_typos asserts a genuine typo still raises AttributeError."
+      },
+      {
+        "claim": "A core install that calls a speech check without the extra gets an error naming the fix, pip install 'trainproof[speech]', rather than a bare ImportError on numpy.",
+        "evidence": "src/trainproof/speech/data.py wraps its three imports; tests/test_core_install.py::test_speech_data_says_what_to_install_when_the_extra_is_absent"
+      },
+      {
+        "claim": "tests/test_core_install.py is new: 16 tests that block numpy, soundfile and ttsproof from the import system in a fresh subprocess and assert that twelve core modules and the epoch CLI still work.",
+        "evidence": "tests/test_core_install.py, using an importlib.abc.MetaPathFinder that raises on those three top-level names."
+      }
+    ],
+    "architecture_facts": [
+      {
+        "claim": "90 distinct TP-* rule IDs exist in the source at 0.18.1, unchanged from 0.18.0. No rule, threshold or verdict changed in this release.",
+        "evidence": "A scan of src/trainproof/**/*.py for TP-[A-Z0-9-]+ returns 90 ids. tests/test_contracts.py enforces that the ids in the source and the ids documented in RULES.md are identical in both directions."
+      },
+      {
+        "claim": "All 18 runs in the fault-injection gallery produce byte-identical verdicts before and after the dependency change. The only line that moved in EVIDENCE_MATRIX.md is the version string.",
+        "evidence": "scripts/regenerate_evidence.py --check gates this in tests/test_golden_gallery.py::test_evidence_matrix_is_current; the regenerated diff is one line."
+      },
+      {
+        "claim": "The tfevents reader is written from the wire format. It needs no tensorflow, no tensorboard, no protobuf and no torch, and is validated byte-exact against EventAccumulator. The 0.18.1 packaging fix brings the declared dependencies into line with that design.",
+        "evidence": "src/trainproof/tfevents.py; tests/test_v014_tfevents.py"
+      },
+      {
+        "claim": "Severity and exit code are separate axes. FAIL exits 1; WARN and PASS exit 0; NOT-CHECKED exits 2, so a run that could not be judged never impersonates a clean one.",
+        "evidence": "CONTRACTS.md, exit code section; schema_version is 3 and unchanged in this release."
+      },
+      {
+        "claim": "Every single-run report carries a checks object with ran and skipped, so a consumer can answer \"was this actually checked?\" INFO-only observations are deliberately excluded from that accounting, because a missing observation cannot imply a clean result.",
+        "evidence": "CONTRACTS.md; src/trainproof/epoch.py CHECK_GROUPS"
+      }
+    ],
+    "limitations": [
+      {
+        "claim": "trainproof cannot detect a model learning the wrong thing from a single run's curve. A shuffled-labels run on data that cannot be learned dropped its loss from 18.9 to 5.7 and looked textbook-healthy; it was memorising the statistics of noise. Catching it requires trainproof compare against a known-good baseline.",
+        "evidence": "EVIDENCE_MATRIX.md: bad_labels scores WARN on single-run and FAIL on compare across all three seeds. Stated as a limitation in README.md."
+      },
+      {
+        "claim": "The speech pack is not installed by default as of 0.18.1. trainproof data will not run on a core install.",
+        "evidence": "pyproject.toml optional-dependencies; tests/test_core_install.py"
+      },
+      {
+        "claim": "A skipped check reports a prose reason, not a typed one, so a CI job cannot mechanically distinguish a signal that was never in the log from one that is present and degenerate. Typed coverage exists on an unreleased branch and is not in 0.18.1.",
+        "evidence": "CONTRACTS.md checks object; CHANGELOG.md 0.19.0 entry, marked unreleased."
+      }
+    ]
+  },
+  "golden_qa": [
+    {
+      "question": "What changed in version 0.18.1?",
+      "answer": "0.18.1 is a packaging fix with no rule changes. numpy, soundfile and ttsproof were hard runtime dependencies used by exactly one module, the speech dataset checker, and the CLI imported it at module scope. So installing trainproof pulled an audio stack, and linting a text log would not start without libsndfile, the C library behind soundfile. The core now declares no runtime dependencies at all; those three moved to an optional trainproof[speech] extra, and the speech import is lazy. 274 tests pass and all 18 fault-injection verdicts are byte-identical to 0.18.0."
+    },
+    {
+      "question": "Does trainproof have any dependencies?",
+      "answer": "No. As of 0.18.1 the core declares no runtime dependencies. Reading a TensorBoard event file needs no tensorflow, tensorboard, protobuf or torch, because the tfevents reader is written from the wire format and validated byte-exact against EventAccumulator. The speech and TTS dataset checker needs numpy, soundfile and ttsproof, and those install only if you ask for trainproof[speech]."
+    },
+    {
+      "question": "Why does a linter for training logs care about audio libraries?",
+      "answer": "It should not, and as of 0.18.1 it does not. trainproof has a speech and TTS dataset pack that genuinely needs soundfile to read audio. The mistake was that the CLI imported that pack eagerly, so everyone paid for it. It is now an optional extra and the import happens only when a speech command is actually called."
+    },
+    {
+      "question": "How many rules does trainproof have?",
+      "answer": "90 distinct TP-* rule IDs at 0.18.1, unchanged from 0.18.0 since that release added no rules. A test enforces that the IDs in the source and the IDs documented in RULES.md match in both directions, so an undocumented rule and an orphaned doc entry both fail the build."
+    },
+    {
+      "question": "What is trainproof for?",
+      "answer": "It reads the training logs you already produce and returns a verdict with an exit code, so you can stop paying for a run that is already dead. No model judges a model and there are no confidence scores: every check is a deterministic rule that either fires or does not, and prints the number it fired on. It reads Hugging Face trainer_state.json, Coqui logs, TensorBoard event files, JSONL and CSV."
+    },
+    {
+      "question": "What does trainproof do when it cannot judge a run?",
+      "answer": "It says so. NOT-CHECKED is a distinct verdict with its own exit code, 2, separate from FAIL at 1 and PASS at 0. A tool that cannot tell \"your run failed\" from \"I could not read your log\" is lying to your CI quietly. Every single-run report also carries a checks object listing which check groups ran and why each of the rest did not."
+    },
+    {
+      "question": "What can trainproof not catch?",
+      "answer": "A model learning the wrong thing, from a single run's curve. In the fault-injection study, a run trained on shuffled labels dropped its loss from 18.9 to 5.7 and looked textbook-healthy while memorising the statistics of noise. That is indistinguishable from real training on one curve. Catching it needs trainproof compare against a known-good baseline, where it fails on all three seeds. The limitation is stated in the README rather than left for a user to discover."
+    },
+    {
+      "question": "How were trainproof's rules validated?",
+      "answer": "Against a controlled fault-injection study: one Qwen2.5-3B QLoRA in six configurations, healthy, 100x learning rate, lr=0, fp16 NaN, shuffled labels and overfit, three seeds each, eighteen runs. The 100x learning-rate run spiked its gradient norm to about 2,650, roughly 4,900 times its own median. The results table is generated from the logs by a script, and a test fails the build if the published table drifts from the data it describes."
+    },
+    {
+      "question": "Has a real training log ever proved trainproof wrong?",
+      "answer": "Yes, and the fix is documented. TP-ZERO-GRAD fired whenever every gradient norm was exactly 0.0 and reported a severed backward graph. Coqui writes avg_grad_norm as 0.0 when clipping is off, so a healthy 125,000-step run whose loss reached 0.017 got a FAIL from the tool itself. The fix was reasoning rather than a threshold: a run cannot both learn and receive no gradient, so the check stands down when the loss improved, and records why it stood down, because a check that did not run must never look like one that passed. No unit test caught that; one real log did."
+    },
+    {
+      "question": "Is trainproof related to ttsproof or spkproof?",
+      "answer": "They are siblings, all MIT and all deterministic: trainproof judges training runs, ttsproof judges text-to-speech output, spkproof measures speaker verification. As of 0.18.1 trainproof's optional speech pack reuses ttsproof's text normalisation, which is why ttsproof appears in the trainproof[speech] extra rather than in the core."
+    }
+  ],
+  "generated_by": "hand-authored for 0.18.1 from CHANGELOG, source and the test suite; counts measured from the repo",
+  "generated_at": "2026-08-22T05:40:00Z"
+}
