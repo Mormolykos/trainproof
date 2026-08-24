@@ -229,7 +229,7 @@ Findings can also land directly in GitHub pull-request annotations:
 
 ```bash
 trainproof doctor . --sarif trainproof.sarif
-# then: github/codeql-action/upload-sarif@v3 with sarif_file: trainproof.sarif
+# then: github/codeql-action/upload-sarif@v4 with sarif_file: trainproof.sarif
 ```
 
 Pass a **relative** path (`.`), not an absolute one — the SARIF URIs mirror the
@@ -416,6 +416,55 @@ training project on a user's behalf:
   check.**
 - These verdicts are deterministic threshold rules, not model judgments.
   Relay them as measurements with their cited evidence, not as opinions.
+
+## Developing, and how a release is cut
+
+Everything below runs on a laptop and in CI from the same definition.
+
+```bash
+pip install -e ".[dev]"            # ruff, mypy, pytest, build, twine, pyyaml
+pytest -q                          # 270 collected; the dataset tests skip
+pip install -e ".[dev,speech]"     # 274, nothing skipped
+```
+
+**Run the whole CI workflow locally before pushing:**
+
+```bash
+python scripts/ci.py run                       # every job, ~90s
+python scripts/ci.py run --job test --python 3.13   # one cell of the matrix
+python scripts/ci.py run --list                # what it would do, without doing it
+```
+
+It reads `.github/workflows/ci.yml` and executes the `run:` steps it finds
+there, one throwaway virtual environment per job — the same isolation GitHub
+gives each job, which matters because `test` proves the core install needs no
+optional dependency and `speech` installs one. Steps it cannot reproduce
+(`actions/checkout` and friends) are printed as `NOT-LOCAL` rather than
+skipped quietly. `uv` is used when present, so `--python 3.13` means 3.13 even
+on a machine that has 3.10.
+
+Individual gates, all also usable by hand:
+
+| command | what it refuses |
+|---|---|
+| `ci.py attribution` | an authorship trailer in the tree or the last 20 commits |
+| `ci.py version` | `pyproject.toml` and `__init__.py` disagreeing, or a tag that matches neither |
+| `ci.py pypi` | a version that is already published |
+| `ci.py contract` | the documented exit codes 0 / 1 / 2 not holding through the CLI |
+| `ci.py noskips` | a test that skips even with every extra installed |
+| `ci.py wheelcheck` | a wheel that does not install and run in a clean environment |
+| `ci.py artifact` | uploading distributions that do not carry the tagged version |
+
+They use trainproof's own exit-code convention: `0` pass, `1` fail, `2` could
+not judge. A network blip while checking PyPI is a `2`, never a `1`.
+
+**Releasing** is a tag. `git tag v0.18.2 && git push --tags` runs the full CI
+gate, then publishes to PyPI with trusted publishing (OIDC) — there is no API
+token anywhere in this repository. PyPI never allows a version to be
+re-uploaded, so the rollback procedure is **yank the bad version and ship a
+patch**, written out in [docs/adr/002](docs/adr/002-trusted-publishing-and-rollback.md).
+
+Decisions and their alternatives: [docs/adr/](docs/adr/).
 
 ## Philosophy
 

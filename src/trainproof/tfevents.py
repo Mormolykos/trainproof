@@ -21,6 +21,7 @@ than raising, because a killed run is exactly the run a user most wants judged.
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterator
 from pathlib import Path
 
 # protobuf wire types
@@ -40,10 +41,17 @@ def _read_varint(buf: bytes, pos: int) -> tuple[int, int]:
         shift += 7
 
 
-def _iter_fields(buf: bytes, start: int = 0, end: int | None = None):
-    """Yield (field_number, wire_type, value) over one protobuf message."""
+def _iter_fields(buf: bytes, start: int = 0, end: int | None = None) -> Iterator[tuple[int, int, int | bytes]]:
+    """Yield (field_number, wire_type, value) over one protobuf message.
+
+    The value type depends on the wire type and always has: a varint yields an
+    int, every other wire type yields bytes. Callers must branch on `wire`
+    before using `val`, which is why that union is written down rather than
+    inferred from whichever branch happens to come first.
+    """
     end = len(buf) if end is None else end
     pos = start
+    val: int | bytes
     while pos < end:
         key, pos = _read_varint(buf, pos)
         field, wire = key >> 3, key & 0x07
@@ -70,14 +78,20 @@ def _tensor_scalar(buf: bytes) -> float | None:
     Lightning logs scalars as rank-0 tensors rather than simple_value, so a
     reader that only handles simple_value sees an empty run.
     """
+    # The `isinstance` guards restate, at the point of use, the invariant
+    # `_iter_fields` documents: a varint yields an int and every other wire
+    # type yields bytes. They are also what lets a type checker see it. A field
+    # that contradicts its own wire type is skipped rather than raised on,
+    # which is this module's standing policy for a malformed log - see the
+    # module docstring on truncated records.
     for field, wire, val in _iter_fields(buf):
-        if field == 5 and wire == _LEN and len(val) >= 4:      # packed float_val
+        if field == 5 and wire == _LEN and isinstance(val, bytes) and len(val) >= 4:   # packed float_val
             return struct.unpack("<f", val[:4])[0]
-        if field == 5 and wire == _FIXED32:                     # single float_val
+        if field == 5 and wire == _FIXED32 and isinstance(val, bytes):                 # single float_val
             return struct.unpack("<f", val)[0]
-        if field == 4 and wire == _LEN and len(val) >= 4:       # tensor_content
+        if field == 4 and wire == _LEN and isinstance(val, bytes) and len(val) >= 4:   # tensor_content
             return struct.unpack("<f", val[:4])[0]
-        if field == 6 and wire == _LEN and len(val) >= 8:       # double_val
+        if field == 6 and wire == _LEN and isinstance(val, bytes) and len(val) >= 8:   # double_val
             return struct.unpack("<d", val[:8])[0]
     return None
 
@@ -85,21 +99,21 @@ def _tensor_scalar(buf: bytes) -> float | None:
 def _parse_event(buf: bytes) -> tuple[float, int, list[tuple[str, float]]]:
     wall_time, step, scalars = 0.0, 0, []
     for field, wire, val in _iter_fields(buf):
-        if field == 1 and wire == _FIXED64:
+        if field == 1 and wire == _FIXED64 and isinstance(val, bytes):
             wall_time = struct.unpack("<d", val)[0]
-        elif field == 2 and wire == _VARINT:
+        elif field == 2 and wire == _VARINT and isinstance(val, int):
             step = val
-        elif field == 5 and wire == _LEN:                       # Summary
+        elif field == 5 and wire == _LEN and isinstance(val, bytes):   # Summary
             for sf, sw, sv in _iter_fields(val):
-                if sf != 1 or sw != _LEN:
+                if sf != 1 or sw != _LEN or not isinstance(sv, bytes):
                     continue
                 tag, value = None, None
                 for vf, vw, vv in _iter_fields(sv):             # Summary.Value
-                    if vf == 1 and vw == _LEN:
+                    if vf == 1 and vw == _LEN and isinstance(vv, bytes):
                         tag = vv.decode("utf-8", "replace")
-                    elif vf == 2 and vw == _FIXED32:
+                    elif vf == 2 and vw == _FIXED32 and isinstance(vv, bytes):
                         value = struct.unpack("<f", vv)[0]
-                    elif vf == 8 and vw == _LEN:
+                    elif vf == 8 and vw == _LEN and isinstance(vv, bytes):
                         value = _tensor_scalar(vv)
                 if tag is not None and value is not None:
                     scalars.append((tag, value))

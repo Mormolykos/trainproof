@@ -70,7 +70,10 @@ def _convert_state_to_records(state) -> list[dict]:
 try:
     from transformers import TrainerCallback
 except ImportError:
-    class TrainerCallback:
+    # The stand-in deliberately shadows the real class so the callback can be
+    # defined without transformers installed. mypy sees two definitions of one
+    # name and cannot know only one is ever live.
+    class TrainerCallback:  # type: ignore[no-redef]
         pass
     _HAS_TRANSFORMERS = False
 else:

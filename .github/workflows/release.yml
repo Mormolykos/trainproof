@@ -1,0 +1,82 @@
+name: Release
+
+# A tag is the only trigger. There is no manual "publish" button and no branch
+# that publishes on merge, so the released version is always a named point in
+# history that someone can check out.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  # The same file a pull request runs. Not a copy of it, and not a subset:
+  # a release that could pass a weaker gate than a pull request is the fault
+  # this reuse exists to prevent.
+  gate:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: publish to PyPI
+    needs: gate
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/trainproof
+    permissions:
+      # Trusted publishing. PyPI mints a short-lived token from this OIDC
+      # identity, so there is no long-lived API token in the repository, in an
+      # organisation secret, or on the maintainer's laptop. Nothing to leak and
+      # nothing to rotate. `contents` stays read here - creating the GitHub
+      # release is a separate job with a separate permission.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: The tag matches the version in the source
+        run: python scripts/ci.py version --expect "${{ github.ref_name }}"
+
+      # Hard gate here, advisory in ci.yml. PyPI will reject the upload anyway,
+      # but it rejects it AFTER the build, in a step whose error names a URL
+      # rather than a procedure. Failing here says what to do instead.
+      - name: The version is not already on PyPI
+        run: python scripts/ci.py pypi
+
+      # Publish the artifact the gate verified. Rebuilding here would upload
+      # bytes nothing tested - a different wheel, built from the same source,
+      # by a job with an OIDC token.
+      - uses: actions/download-artifact@v7
+        with:
+          name: distributions
+          path: dist
+
+      - name: The downloaded artifact is the tagged version
+        run: python scripts/ci.py artifact
+
+      # Pinned to a commit SHA, not a tag. This is the one action in the
+      # repository that holds a credential: a moving tag on it is a moving
+      # credential holder. Everything else is pinned to a major version, where
+      # readability is worth more than the marginal risk.
+      # v1.14.2
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+
+  github-release:
+    name: GitHub release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          name: distributions
+          path: dist
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
+          generate_release_notes: true

@@ -33,8 +33,8 @@ def _nothing_ran(reason: str) -> dict[str, Any]:
 class CheckContext:
     def __init__(self, records: list[dict]):
         self.records = records
-        self.ran = []
-        self.skipped = {}
+        self.ran: list[str] = []
+        self.skipped: dict[str, str] = {}
         self.losses = []
         self.loss_steps = []
         self.lrs = []

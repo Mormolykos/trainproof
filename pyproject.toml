@@ -12,9 +12,10 @@ requires-python = ">=3.10"
 dependencies = []
 
 [project.optional-dependencies]
-# The lint gate runs in release.ps1, so the linter has to be installable with
-# the project rather than assumed present on the machine that cuts a release.
-dev = ["pytest", "ruff>=0.16"]
+# The whole gate has to be installable with the project rather than assumed
+# present on the machine that runs it. pyyaml is only used by `scripts/ci.py
+# run`, which reads .github/workflows/ci.yml to replay CI locally.
+dev = ["pytest", "ruff>=0.16", "mypy>=2.3", "pyyaml>=6", "build>=1.2", "twine>=6"]
 # The speech/TTS pack. soundfile needs libsndfile, a C library, so this is not
 # something to install on the way to linting a text log.
 speech = ["numpy", "soundfile", "ttsproof"]
@@ -84,3 +85,29 @@ ignore = [
 # Fixture and probe scripts under evidence/ intentionally use torch and write
 # files; they are reference implementations, not shipped code.
 "evidence/**" = ["S", "B"]
+
+# Type checking arrived with CI, on a codebase written without it. The level
+# is chosen by measurement, not by taste: mypy's defaults reported 13 errors
+# here and `--strict` reported 159. Thirteen were worth fixing in an afternoon
+# and six of them were real; a hundred and fifty-nine would have been closed by
+# switching the checker off, which is how type checking usually dies.
+#
+# So: mypy's defaults, plus the three flags that make the defaults honest, and
+# a written next step. `disallow_untyped_defs` is the ratchet - turning it on
+# module by module is how this gets stricter without a flag day.
+# See docs/adr/003-typing-strictness.md.
+[tool.mypy]
+python_version = "3.10"
+files = ["src/trainproof"]
+warn_unused_configs = true
+warn_redundant_casts = true
+# An `# type: ignore` that has stopped being needed is a lie about the code,
+# and it is exactly the comment nobody revisits.
+warn_unused_ignores = true
+
+# Optional dependencies with no stubs. trainproof imports these inside the
+# function that needs them precisely so a missing one becomes exit 2 rather
+# than an ImportError at startup - the checker has to be told the same thing.
+[[tool.mypy.overrides]]
+module = ["numpy.*", "soundfile.*", "sentencepiece.*", "transformers.*", "pynvml.*", "ttsproof.*"]
+ignore_missing_imports = true
