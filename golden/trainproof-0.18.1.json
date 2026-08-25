@@ -3,7 +3,7 @@
   "version": "0.18.1",
   "release_date": "2026-08-22",
   "verified": {
-    "test_count": 274,
+    "test_count": 333,
     "test_command": "python -m pytest --collect-only -q",
     "python_requires": ">=3.10",
     "commands": [
