@@ -33,7 +33,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-from . import rules
+from . import coverage, rules
 
 # --------------------------------------------------------------------- memory
 
@@ -403,5 +403,6 @@ def check_env(module: str | None = None, checkpoint: str | None = None,
     return {
         "verdict": verdict,
         "findings": findings,
-        "checks": {"ran": sorted(ran), "skipped": skipped},
+        "checks": {"ran": sorted(ran), "skipped": skipped,
+                   "coverage": coverage.summarise(sorted(ran), skipped)},
     }

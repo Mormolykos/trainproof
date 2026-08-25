@@ -2,7 +2,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from . import rules
+from . import coverage, rules
 from .adapters import parse_log_with_format
 
 # Every JUDGING check trainproof can run on a single log. TP-PASS reports which
@@ -26,8 +26,23 @@ CHECK_GROUPS = (
 )
 
 
+def _checks(ran: list[str], skipped: dict[str, str]) -> dict[str, Any]:
+    """The `checks` block, with typed coverage alongside the sentences.
+
+    Every report is assembled through here rather than by four separate dict
+    literals, because a coverage field present on three paths out of four is
+    worse than none: a reader who sees it once assumes it is always there, and
+    the path that omits it becomes indistinguishable from full coverage.
+    """
+    return {
+        "ran": sorted(ran),
+        "skipped": skipped,
+        "coverage": coverage.summarise(sorted(ran), skipped),
+    }
+
+
 def _nothing_ran(reason: str) -> dict[str, Any]:
-    return {"ran": [], "skipped": {g: reason for g in CHECK_GROUPS}}
+    return _checks([], {g: reason for g in CHECK_GROUPS})
 
 
 class CheckContext:
@@ -384,7 +399,7 @@ def check_records(records: list[dict]) -> dict[str, Any]:
     return {
         "verdict": verdict,
         "findings": findings,
-        "checks": {"ran": sorted(ctx.ran), "skipped": ctx.skipped},
+        "checks": _checks(ctx.ran, ctx.skipped),
     }
 
 def check_epoch(log_path: str | Path, fmt: str = "auto", mapping_overrides: dict[str, str] | None = None) -> dict[str, Any]:
