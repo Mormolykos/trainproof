@@ -390,7 +390,7 @@
     },
     {
       "question": "How is trainproof tested?",
-      "answer": "228 tests at 0.17.0, up from 210 at 0.14.0, collected with python -m pytest --collect-only -q. Golden snapshots act as a regression suite, contract tests assert that the rule identifiers in the source and in RULES.md match in both directions, and EVIDENCE_MATRIX.md is regenerated from the shipped logs so a drifted verdict fails rather than going unnoticed. The environment tests build every fixture from a temporary directory and require no GPU, no network and no real model."
+      "answer": "333 tests at 0.18.1, collected with python -m pytest --collect-only -q (228 at 0.17.0, 210 at 0.14.0). An earlier figure of 274 was wrong: the runner supplied pytest without PyYAML, so tests/test_ci_pipeline.py skipped 20 tests at importorskip and the run still exited 0. Golden snapshots act as a regression suite, contract tests assert that the rule identifiers in the source and in RULES.md match in both directions, and EVIDENCE_MATRIX.md is regenerated from the shipped logs so a drifted verdict fails rather than going unnoticed. The environment tests build every fixture from a temporary directory and require no GPU, no network and no real model."
     },
     {
       "question": "What Python versions does trainproof support?",
