@@ -4,6 +4,47 @@ All notable changes to trainproof are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.0.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+On `main`, not in any published version. `pip install trainproof` gives 0.18.1,
+which collects **274 tests**; `main` collects **333**. Both numbers are correct
+about different code, and this section exists because until now nothing outside
+the commit log said so.
+
+### Added
+
+- **Typed coverage for every skipped check** (`dba9619`). `src/trainproof/coverage.py`
+  defines eight terminal states, an `OWNER` map naming who must act on each, and
+  `classify()` / `summarise()`. `epoch.py` now assembles every report through one
+  `_checks()` builder rather than four dict literals — a coverage field present on
+  three paths out of four is worse than none, because the path that omits it becomes
+  indistinguishable from full coverage. Additive: `ran` and `skipped` keep their exact
+  shape, so nothing that reads the current report changes behaviour. This is trainproof
+  adopting the `notchecked` schema, and it is that schema's first production adopter.
+  **+27 tests** (`tests/test_coverage.py`: 6 cases plus `test_reason_maps_to_its_state`
+  parametrized over 21 reason→state pairs).
+
+- **A CI gate that can refuse a release** (`9c1c70e`). `scripts/ci.py`, plus
+  `.github/workflows/ci.yml` and `release.yml`: attribution scan, ruff, mypy, a
+  3.10–3.13 matrix across two operating systems, a contract job, and an artifact check.
+  Trusted publishing needs a gate that can say no, and a gate that claims to catch
+  faults needs tests proving it catches them. **+32 tests** (`tests/test_ci_pipeline.py`
+  20, `tests/test_ci_catches_faults.py` 12) — including that a mismatched tag is
+  caught, that the publishing action is pinned to a commit, that publishing uses OIDC
+  and carries no token, and that a failed check and an unrunnable check exit
+  differently.
+
+### Fixed
+
+- **A clean `pip install -e ".[dev]"` checkout ran zero tests, not 274** (`9c1c70e`).
+  The speech pack left the core install in 0.18.1, so `tests/test_data.py` imported
+  numpy/soundfile/ttsproof at module scope and failed at *collection*, which aborts the
+  whole session rather than that one file. It now `importorskip`s the third-party
+  packages themselves — not `trainproof.speech.data`, because that module deliberately
+  re-raises a plain `ImportError` carrying the install instruction, which
+  `importorskip` would not catch. No test count changed; the suite simply became
+  runnable. **+0 tests.**
+
 ## 0.18.1 - 2026-08-22
 
 ### Fixed
