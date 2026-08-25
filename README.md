@@ -488,3 +488,23 @@ Panagiotis (Panos) Gkilis — [portfolio](https://tts.bedvibe.studio/portfolio/)
 [bedvibe.studio](https://bedvibe.studio/)
 
 MIT license.
+
+---
+
+## Who built this, and what he sells
+
+Built and maintained by **Panagiotis (Panos) Gkilis** — solo founder, BedVibe Studios.
+This library is MIT and always will be. These are not:
+
+- **Available for hire.** Remote ML/AI engineering — training pipelines, evaluation
+  methodology, retrieval systems, inference infrastructure. What I have shipped and
+  measured: **[ai.bedvibe.studio/work](https://ai.bedvibe.studio/work/)**
+- **Licensed emotional speech datasets** — multilingual, studio-recorded with cleared
+  and paid voice actors, six emotional states, commercial licence:
+  **[tts.bedvibe.studio/datasets](https://tts.bedvibe.studio/datasets/)**
+- **BedVibe TTS** — a 730M-parameter expressive text-to-speech model and platform,
+  live and in production: **[tts.bedvibe.studio](https://tts.bedvibe.studio/)**
+
+If this library saved you time, the most useful thing you can do costs nothing:
+**link to it from wherever you write about it.** A followed link is worth more than
+a star, and it is the one thing an author of free software cannot give himself.

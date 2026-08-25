@@ -20,6 +20,16 @@ dev = ["pytest", "ruff>=0.16", "mypy>=2.3", "pyyaml>=6", "build>=1.2", "twine>=6
 # something to install on the way to linting a text log.
 speech = ["numpy", "soundfile", "ttsproof"]
 
+# PyPI renders these in the project sidebar. Until 2026-08-25 there were none,
+# so the package page — the highest-authority surface this project has — carried
+# no route to the author or to anything he sells.
+[project.urls]
+Homepage = "https://github.com/Mormolykos/trainproof"
+Documentation = "https://tts.bedvibe.studio/portfolio/"
+"Engineering notebook" = "https://ai.bedvibe.studio/trainproof/"
+"Hire the author" = "https://ai.bedvibe.studio/work/"
+"Speech datasets (commercial)" = "https://tts.bedvibe.studio/datasets/"
+
 [project.scripts]
 trainproof = "trainproof.cli:main"
 
