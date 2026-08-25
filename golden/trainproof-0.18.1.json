@@ -246,8 +246,8 @@
         "evidence": "pyproject.toml optional-dependencies; tests/test_core_install.py"
       },
       {
-        "claim": "A skipped check reports a prose reason, not a typed one, so a CI job cannot mechanically distinguish a signal that was never in the log from one that is present and degenerate. Typed coverage exists on an unreleased branch and is not in 0.18.1.",
-        "evidence": "CONTRACTS.md checks object; CHANGELOG.md 0.19.0 entry, marked unreleased."
+        "claim": "A skipped check in the released 0.18.1 reports a prose reason, not a typed one, so a CI job cannot mechanically distinguish a signal that was never in the log from one that is present and degenerate. Typed coverage has since landed on main: every skip now carries a state from the notchecked schema, alongside counts by state, an explicit denominator and who has to act. It is not yet in a PyPI release.",
+        "evidence": "CONTRACTS.md checks object; src/trainproof/coverage.py, added in commit dba9619 'Adopt the notchecked schema: every skip now carries a typed state' (2026-08-25, pushed). PyPI serves 0.18.1 and has no 0.19.0 release (PyPI JSON API, checked 2026-08-25)."
       },
       {
         "claim": "The objective checks read the output-layer width, the ignore sentinel and the target ids. They do not read logits, weights or gradients, so they cannot detect a loss that is wrong in any other way - a mis-scaled term, a wrong reduction, or a target built from the wrong field will all pass.",
