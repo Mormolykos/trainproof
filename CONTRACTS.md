@@ -72,6 +72,24 @@ cannot imply a clean result.
 When `error` is non-null, trainproof could not judge: `reports` is empty,
 `worst_verdict` is `null`, and the exit code is `2`.
 
+`doctor --json` also carries **`not_judged`** (added 2026-09-02), the denominator
+the verdict was reached over:
+
+```json
+"not_judged": {
+  "judged": 20,
+  "found": 27,
+  "unreadable": ["runs/b/train.log"],
+  "capped_out": ["runs/old/trainer_state.json"]
+}
+```
+
+`unreadable` are logs found and not parseable; `capped_out` are logs dropped by
+the 20-most-recent cap. Both were printed for a human and **absent from the JSON**,
+so a CI consumer received a worst verdict over a silently shrunk denominator. The
+key appears only on `doctor`, which is the only command that can find more logs
+than it judges.
+
 **Versioning policy.** A minor release may add new optional keys and new rule
 IDs. Renaming a key, removing a key, changing a type, or changing the meaning
 of an existing field requires a `schema_version` bump and a CHANGELOG entry.

@@ -7,7 +7,7 @@ All notable changes to trainproof are documented here. Format follows
 ## [Unreleased]
 
 On `main`, not in any published version. `pip install trainproof` gives 0.18.1,
-which collects **274 tests**; `main` collects **333**. Both numbers are correct
+which collects **274 tests**; `main` collects **342**. Both numbers are correct
 about different code, and this section exists because until now nothing outside
 the commit log said so.
 
@@ -35,6 +35,28 @@ the commit log said so.
   differently.
 
 ### Fixed
+
+- **`trainproof tokenizer` reported numbers for two things it had not measured.**
+  Tokens-per-second summed EVERY line's tokens over only the durations of the lines
+  that declared one, so a file where one line in ten is timed reported roughly ten
+  times the real rate and `TP-TOK-HIGH-TPS` fired on a healthy tokenizer. Both sides
+  of the rate now come from the timed lines only, and the evidence names that
+  population. Where no line declares a duration the check cannot run, and silence was
+  its whole report: new **`TP-TOK-TPS-NOT-MEASURED`** (NOT-CHECKED) says so, and
+  `TP-TOK-PASS` no longer implies it passed. Separately, `total_unks / max(1,
+  total_tokens)` turned an empty transcripts file into 0.000% OOV and 100.000%
+  coverage, ending on `TP-TOK-PASS` with the evidence "0 tokens evaluated" — that is
+  now **`TP-TOK-NOT-MEASURED`** and a `NOT-CHECKED` verdict, which exits 2 rather than
+  0. **+6 tests** (`tests/test_tokenizer_not_measured.py`).
+
+- **`doctor --json` reported a verdict with no denominator.** Both notes about logs
+  that were found and not judged — "could not be parsed" and the 20-most-recent cap —
+  printed only in human mode, so a CI consumer received a worst verdict over a
+  silently shrunk set with nothing in the document saying so. The envelope now carries
+  an optional **`not_judged`** on `doctor`: `judged`, `found`, `unreadable` and
+  `capped_out`. A new optional key on one command, which the versioning policy allows
+  without a `schema_version` bump; every other command's envelope is byte-identical.
+  **+3 tests** (`tests/test_v017_discovery.py`).
 
 - **A clean `pip install -e ".[dev]"` checkout ran zero tests, not 274** (`9c1c70e`).
   The speech pack left the core install in 0.18.1, so `tests/test_data.py` imported

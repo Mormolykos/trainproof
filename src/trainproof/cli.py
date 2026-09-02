@@ -39,14 +39,21 @@ def _normalize_verdict(v):
     Map it to NOT-CHECKED so the enum stays closed and the exit code is 2."""
     return v if v in _VERDICT_SEVERITY else "NOT-CHECKED"
 
-def _envelope(reports, worst_verdict, error=None):
-    return {
+def _envelope(reports, worst_verdict, error=None, not_judged=None):
+    env = {
         "schema_version": SCHEMA_VERSION,
         "trainproof_version": __import__('trainproof').__version__,
         "reports": reports,
         "worst_verdict": worst_verdict,
         "error": error,
     }
+    # Optional, and only where there is something to say: `doctor` can find
+    # more logs than it judges. A new optional key is what the versioning
+    # policy allows without a schema bump; adding it to every envelope would
+    # change the shape of commands that have no such denominator.
+    if not_judged is not None:
+        env["not_judged"] = not_judged
+    return env
 
 def tag_source(findings, source):
     # every finding carries where it came from, so one flat `findings` array
@@ -87,9 +94,9 @@ def _get_exit_code(reports):
         return 2
     return 0
 
-def output_json(reports, worst_verdict):
+def output_json(reports, worst_verdict, not_judged=None):
     emit_sarif(reports)
-    print(json.dumps(_envelope(reports, worst_verdict), indent=2))
+    print(json.dumps(_envelope(reports, worst_verdict, not_judged=not_judged), indent=2))
     sys.exit(_get_exit_code(reports))
 
 def fail_to_run(message):
@@ -244,13 +251,16 @@ def _run():
         if not candidates:
             fail_to_run(f"no readable training logs found in {path}")
             
+        capped_out = []
         if path.is_dir():
             candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
             if len(candidates) > 20:
                 if not is_json:
                     print(f"Note: Found {len(candidates)} logs, capping to 20 most recently modified. Skipped {len(candidates)-20} logs.")
+                capped_out = candidates[20:]
                 candidates = candidates[:20]
-                
+
+
         results = []
         unreadable = list(undiscoverable)
         from .epoch import check_records
@@ -314,7 +324,17 @@ def _run():
         worst_verdict = _get_worst_verdict(results)
 
         if is_json:
-            output_json(results, worst_verdict)
+            # The denominator ships with the verdict. Both notes above print
+            # only in human mode, so a CI consumer used to receive a worst
+            # verdict over "the logs that happened to parse, capped at 20" with
+            # nothing in the document saying so -- a silently shrunk
+            # denominator, which is the same defect as a false zero.
+            output_json(results, worst_verdict, not_judged={
+                "unreadable": [str(p) for p in unreadable],
+                "capped_out": [str(p) for p in capped_out],
+                "judged": len(results),
+                "found": len(results) + len(unreadable) + len(capped_out),
+            })
 
         if len(results) > 1:
             print("SUMMARY")

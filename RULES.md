@@ -96,9 +96,11 @@ These rules validate tokenizers and datasets (via `trainproof tokenizer` or `tra
 | `TP-TOK-NO-TRANSCRIPTS` | FAIL | Transcripts file not found. |
 | `TP-TOK-HIGH-OOV` | FAIL | High Out-Of-Vocabulary rate detected (>1%). |
 | `TP-TOK-LOW-COVERAGE` | WARN | Vocabulary coverage is below the recommended threshold (<99%). |
-| `TP-TOK-HIGH-TPS` | WARN | High tokens per second of audio (possible sequence length blowout). |
+| `TP-TOK-HIGH-TPS` | WARN | High tokens per second of audio (possible sequence length blowout). Measured over the lines that declare a duration, on both sides of the rate. |
+| `TP-TOK-TPS-NOT-MEASURED` | NOT-CHECKED | No line declared a duration, so tokens per second was not measured. Reported rather than skipped in silence. |
+| `TP-TOK-NOT-MEASURED` | NOT-CHECKED | No tokens were produced, so OOV and vocabulary coverage were not measured. An empty file previously scored 100% coverage. |
 | `TP-TOK-SUSPICIOUS-SPLIT` | WARN | Suspicious splits detected on numbers or dates. |
-| `TP-TOK-PASS` | PASS | The tokenizer vocabulary coverage and splits look healthy. |
+| `TP-TOK-PASS` | PASS | The tokenizer vocabulary coverage and splits look healthy. Its evidence names whether tokens/sec was measured. |
 | `TP-PRE-EMPTY-TEXT` | FAIL | Empty or whitespace-only text found in the dataset. |
 | `TP-PRE-DUPLICATE-TEXT` | WARN | Exact duplicate text found in the dataset. |
 | `TP-PRE-MISSING-EOS-TOKEN`| FAIL | The tokenizer has no `eos_token`. |
