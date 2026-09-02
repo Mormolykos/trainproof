@@ -6,10 +6,35 @@ All notable changes to trainproof are documented here. Format follows
 
 ## [Unreleased]
 
-On `main`, not in any published version. `pip install trainproof` gives 0.18.1,
-which collects **274 tests**; `main` collects **342**. Both numbers are correct
-about different code, and this section exists because until now nothing outside
-the commit log said so.
+Nothing yet.
+
+## [0.19.0] — 2026-09-02 — three checks that reported healthy without measuring
+
+⚠️ **Behaviour change a consumer will notice.** A transcripts file with no usable
+lines used to exit **0**; it now exits **2**. If you run `trainproof` in CI against
+a possibly-empty file, that is a new failure, and it is the correct one.
+
+### Fixed
+
+- **`oov_rate` scored an empty file at 100% coverage.** It divided by
+  `max(1, total_tokens)`, so zero tokens produced a perfect result. An empty file
+  is now a **NOT CHECKED** verdict, never a score.
+- **Tokens-per-second divided every line's tokens by only the timed lines.** Two
+  timed lines at a healthy 2/sec alongside sixty untimed ones read as 62/sec and
+  tripped the warning. Both sides of the ratio now come from the timed lines.
+- **A skipped check reported as healthy.** When no line declares a duration there
+  is nothing to measure, and the run said so by staying silent. Two new
+  NOT-CHECKED rule IDs now say it out loud; both are registered in `RULES.md`.
+- **`doctor --json` dropped the "N logs not judged" note** that the human output
+  prints — the JSON consumer is the one that most needs it. Added as
+  `not_judged`, on that command only, so the envelope shape is unchanged
+  elsewhere.
+
+### Note on test counts
+
+`pip install trainproof` gave 0.18.1, which collected **274 tests**; this release
+collects **342**. Both numbers were correct about different code, and nothing
+outside the commit log said so until this entry.
 
 ### Added
 
