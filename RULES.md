@@ -134,6 +134,93 @@ one integer; it is undecidable from any number of steps of loss.
 | `TP-OBJ-TARGET-OUT-OF-RANGE` | FAIL | Targets contain ids the output layer cannot represent. |
 | `TP-OBJ-COVERAGE-INSUFFICIENT` | INFO | Too few distinct classes were observed to judge dead classes. Absence here means small sample, not bug. |
 | `TP-OBJ-DEAD-CLASS-OK` | PASS | Every class in the output layer appeared as a training target. |
+| `TP-OBJ-LABEL-SHIFT-DOUBLE` | FAIL | The labels appear to be **pre-shifted** against `input_ids` (`labels[i] == input_ids[i+1]`). A causal-LM loss shifts them again, so the model is trained to predict two tokens ahead. |
+| `TP-OBJ-LABEL-SHIFT-OK` | PASS | The labels are aligned with `input_ids` (`labels[i] == input_ids[i]`), which is what the causal-LM loss expects before it applies its own shift. |
+| `TP-OBJ-LABEL-SHIFT-NOT-MEASURED` | NOT-CHECKED | Alignment could not be judged: too few comparable positions, a batch/row mismatch, both hypotheses matching (repeated tokens), or labels that are not a copy of `input_ids` at all. |
+
+### The label-alignment check, and what it deliberately does not claim
+
+The HuggingFace causal-LM convention is that `labels` arrive **aligned** with `input_ids`
+and the loss performs the shift, scoring the logits at position *i* against the label at
+*i+1*. A caller who shifts the labels themselves has the shift applied **twice**, and the
+model is trained to predict two tokens ahead. Nothing crashes — the shapes stay valid,
+gradients flow, and the loss falls. It is the same shape of defect as the `ignore_index`
+collision: invisible in the curve, decidable at step 0, which is why it lives beside it.
+
+Two hypotheses are counted over every unmasked position, **independently rather than
+exclusively**, because wherever a token repeats (`input_ids[i] == input_ids[i+1]`) a
+position satisfies both:
+
+| | condition |
+|---|---|
+| aligned | `labels[i] == input_ids[i]` |
+| pre-shifted | `labels[i] == input_ids[i+1]` |
+
+**Which of those is CORRECT is a property of the loss, not of the tensors**, and the tensors
+cannot reveal it. That is carried by `loss_shifts`, which **defaults to `None`**:
+
+| `loss_shifts` | aligned labels | pre-shifted labels |
+|---|---|---|
+| `None` — unknown *(default)* | NOT-CHECKED | **NOT-CHECKED — never FAIL** |
+| `True` — the loss shifts (HF causal LM) | PASS | **FAIL** |
+| `False` — the loss does not shift | **FAIL** (the model learns to emit the token it was just given) | PASS |
+
+⚠️ **`False` is never inferred.** There is no way to confirm a negative about someone
+else's loss function, so it is only ever supplied explicitly by a caller.
+
+⚠️ **The default cannot fail anything, and that is deliberate.** A custom loop that
+pre-shifts its labels *and* pairs that with a loss that does not shift is training
+correctly. An earlier draft of this rule failed exactly that case, and a false FAIL under
+`policy="stop_on_fail"` aborts a correct run before step 1 — the worst outcome this
+library can produce.
+
+**From `TrainproofCallback`, `loss_shifts=True` is set only when the model can be
+confirmed**: a class that **`transformers` itself defines** whose name ends in
+`ForCausalLM`, after unwrapping PEFT (`get_base_model`), DDP/FSDP (`.module`) and
+`torch.compile` (`._orig_mod`). Only the **unwrapped** module may answer True; testing
+the outer wrapper as well would widen the set of objects that can, and every widening is
+a step toward failing a correct run. The module-origin half is load-bearing — a user
+subclass named `MyForCausalLM` that overrides `forward` with a non-shifting loss reports
+unknown, and unknown never fails. `config.is_encoder_decoder` also reports unknown,
+because that family derives `decoder_input_ids` from the labels internally and
+`input_ids` is the encoder's source sequence.
+
+⚠️ **Confirming the model is not the same as confirming the loss, and this is the one
+gap that remains.** A `Trainer` subclass that overrides `compute_loss` can bypass
+`model(..., labels=...)` entirely and apply different conventions. That is invisible from
+the model object, and the callback is never handed the trainer. **If you override
+`compute_loss`, pass `loss_shifts=` to `TrainproofCallback` explicitly** —
+`TrainproofCallback(loss_shifts=False)` or `True` overrides detection entirely. Both
+independent adversarial reviewers raised this; it is recorded here rather than papered
+over.
+
+**The verdict is a vote over rows, not a pooled count over positions**, because positions
+inside one sequence are not independent observations. A row votes if it carries at least
+`LABEL_ALIGNMENT_MIN_ROW_POSITIONS` comparable positions. Rows that cannot discriminate —
+repeated tokens satisfying both hypotheses, or labels that are not a copy of `input_ids` —
+are **excluded from the vote rather than allowed to veto it**, and a verdict needs
+`LABEL_ALIGNMENT_ROW_AGREEMENT` of the informative rows, informative rows to be at least
+half of those judged, and `LABEL_ALIGNMENT_MIN_POSITIONS` positions overall.
+
+**Sampling.** At most `LABEL_ALIGNMENT_MAX_ROWS` rows and `LABEL_ALIGNMENT_MAX_COLS`
+columns are inspected, sliced **before** any device transfer so that reading a few dozen
+positions never drags a whole batch off the accelerator. Columns are taken from the
+**tail**: SFT masks the prompt on the left, so a head slice of a long sequence would see
+nothing but `ignore_index`.
+
+**The last position of every row is excluded**, because `input_ids[i+1]` does not exist
+there and it could only ever feed the aligned hypothesis. Counting it would measure the two
+hypotheses on different samples.
+
+**Streaming dataloaders are not sampled at all.** `TrainproofCallback` takes a fresh
+iterator to read the first batches; on a non-restartable `IterableDataset` that would
+permanently consume batches the training epoch never sees. Detection is by class name
+anywhere in the MRO plus the absence of `__len__`, and is deliberately biased toward
+skipping: a missed check is recoverable, eating training data is not.
+
+⚠️ **Not to be confused with the `bad_labels` gallery run**, which is labels *shuffled* per
+sequence — a different defect, measured empirically in `examples/gallery/`, whose signature
+is relative and needs `trainproof compare`. Shuffled and shifted are separate failures.
 
 `TP-OBJ-DEAD-CLASS` fires only when coverage is already broad (see
 `DEAD_CLASS_MIN_COVERAGE`) and only a small number of classes are missing (see

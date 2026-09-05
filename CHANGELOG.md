@@ -8,6 +8,106 @@ All notable changes to trainproof are documented here. Format follows
 
 Nothing yet.
 
+## [0.20.0] — 2026-09-05 — a second objective bug the loss curve cannot see
+
+### Added
+
+- **Causal-LM label alignment check — `check_label_alignment`.** The HuggingFace
+  convention passes `labels` **aligned** with `input_ids` and lets the loss apply the
+  shift, scoring the logits at position *i* against the label at *i+1*. A caller who
+  pre-shifts gets the shift applied **twice**, and the model is trained to predict two
+  tokens ahead. Nothing crashes: the shapes stay valid, gradients flow, the loss falls,
+  and the curve is indistinguishable from a healthy run. Same shape of defect as
+  `TP-OBJ-IGNORE-INDEX-COLLISION` — invisible in the curve, decidable at step 0 — which
+  is why it lives in `objective.py` beside it.
+
+  Three IDs: `TP-OBJ-LABEL-SHIFT-DOUBLE` (FAIL), `TP-OBJ-LABEL-SHIFT-OK` (PASS),
+  `TP-OBJ-LABEL-SHIFT-NOT-MEASURED` (NOT-CHECKED).
+
+  **Which arrangement is correct is a property of the loss, not of the tensors**, so the
+  verdict is gated on a tri-state `loss_shifts` that **defaults to `None` — and the
+  default can observe an arrangement but can never FAIL one.** `True` (a confirmed
+  HuggingFace causal LM) fails pre-shifted labels; `False`, which is **only ever supplied
+  by a caller and never inferred**, fails *aligned* labels, because a non-shifting loss
+  paired with aligned labels trains the model to emit the token it was just given.
+
+  A draft of this check failed a correct custom training loop — one that pre-shifts and
+  pairs that with a non-shifting loss — and an adversarial review caught it before
+  release. A false FAIL under `policy="stop_on_fail"` aborts a correct run before step 1,
+  which is the worst outcome this library can produce, so the default is now the timid one.
+
+  The verdict is a **vote over rows**, not a pooled count over positions, because
+  positions inside one sequence are not independent observations. Rows that cannot
+  discriminate — repeated tokens matching both hypotheses, or labels that are not a copy
+  of `input_ids` — are excluded from the vote rather than allowed to veto it; two
+  independent reviewers pointed out that unanimity let a single odd row hide a double
+  shift visible in every other row.
+
+  Sampling is capped at `LABEL_ALIGNMENT_MAX_ROWS` rows and `LABEL_ALIGNMENT_MAX_COLS`
+  columns, **sliced before any device transfer**, so inspecting a few dozen positions
+  never copies a whole batch off the accelerator. Columns are taken from the **tail**,
+  because SFT masks the prompt on the left and a head slice of a long sequence would see
+  nothing but `ignore_index` — silently disabling the check on the exact workload it
+  targets.
+
+- **The check runs automatically from `TrainproofCallback`**, in the same
+  `on_train_begin` pass as the sentinel and coverage checks, before step 1. Under
+  `policy="stop_on_fail"` a confirmed pre-shifted batch aborts the run.
+
+  `loss_shifts=True` is set **only for a class `transformers` itself defines** whose name
+  ends in `ForCausalLM`, after unwrapping PEFT (`get_base_model`), DDP/FSDP (`.module`)
+  and `torch.compile` (`._orig_mod`), and only for the **unwrapped** module — testing the
+  outer wrapper too would widen the set of objects that can answer True, and every
+  widening is a step toward failing a correct run. The module-origin half is
+  load-bearing: a user subclass named `MyForCausalLM` that overrides `forward` with a
+  non-shifting loss reports unknown, and unknown never fails. Encoder-decoder models
+  report unknown too.
+
+  **`TrainproofCallback(loss_shifts=...)`** overrides that detection outright.
+  ⚠️ **Confirming the model is not the same as confirming the loss**, and one gap
+  remains by construction: a `Trainer` subclass overriding `compute_loss` bypasses
+  `model(..., labels=...)`, which is invisible from the model object — the callback is
+  never handed the trainer. **If you override `compute_loss`, pass `loss_shifts=`
+  explicitly.** Raised independently by both adversarial reviewers and documented rather
+  than hidden.
+
+  Only the explicit `input_ids` key is accepted: labels are guessed positionally
+  (`batch[-1]`, a near-universal convention) but there is no equally safe guess for the
+  inputs, and a wrong guess would FAIL a correct run.
+
+### Fixed
+
+- **`TrainproofCallback` no longer samples a streaming dataloader.** `on_train_begin`
+  takes a **fresh iterator** over `train_dataloader` to read the first batches. On a
+  map-style dataset that costs nothing. On a non-restartable `IterableDataset` it
+  permanently consumes batches the training epoch will never see — the objective check
+  was quietly eating training data to produce a finding. **Present since the callback was
+  introduced; found by adversarial review, not by a test.**
+
+  Streaming is now detected without importing torch — a class named `IterableDataset`
+  anywhere in the MRO (`torch.utils.data` and `datasets` define different classes with
+  that same name, and both are streaming, so the collision is harmless here) plus the
+  absence of `__len__` — and all dataloader sampling is skipped with a printed reason.
+  Detection is deliberately biased toward skipping: a missed check is recoverable,
+  consuming someone's training data is not. The static `ignore_index` check still runs,
+  because it needs no data.
+
+- **`MANIFEST.in` now ships `scripts/*.py` in the sdist.** The file existed in the working
+  tree but had never been committed, so the fix it describes was in **no** released
+  artifact. The sdist ships `tests/`, and two of those modules read `scripts/ci.py` —
+  `test_ci_catches_faults.py` imports it at module scope, `test_ci_pipeline.py` reads it
+  as text. Without it, `import ci` raised at collection. Verified in the 0.20.0 sdist:
+  both `scripts/ci.py` and `scripts/regenerate_evidence.py` are present.
+
+  ⚠️ **This does NOT make the shipped test suite runnable, and the earlier draft of this
+  entry implied that it did.** Measured by extracting the 0.20.0 sdist and running its own
+  `tests/` from inside it: **134 failed, 183 passed, 35 skipped**, on 371 `FileNotFoundError`s.
+  The sdist carries `src/`, `tests/*.py`, `scripts/`, `README.md`, `LICENSE`, `pyproject.toml`
+  and `setup.cfg` — and **not** `RULES.md`, `EVIDENCE_MATRIX.md`, `examples/`,
+  `tests/fixtures/` or `tests/golden/`, all of which those tests read. Shipping the scripts
+  removed one cause of one failure mode; it did not remove the others, and no claim is made
+  here that it did. **Open, tracked, and not addressed in this release.**
+
 ## [0.19.0] — 2026-09-02 — three checks that reported healthy without measuring
 
 ⚠️ **Behaviour change a consumer will notice.** A transcripts file with no usable

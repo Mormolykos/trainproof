@@ -1,0 +1,9 @@
+# The sdist already ships `tests/`, and two of those modules read `scripts/ci.py`
+# - `test_ci_catches_faults.py` imports it at module scope, `test_ci_pipeline.py`
+# reads it as text. Without this line the published source distribution carries
+# the gate's own fault-injection suite and cannot run it: `import ci` raises at
+# collection and 12 of 342 tests are uncollectable from the artifact people
+# actually download. Measured on trainproof 0.19.0.
+#
+# `*.py` rather than `graft scripts`, so __pycache__ is never a candidate.
+recursive-include scripts *.py

@@ -1,7 +1,7 @@
 import time
 
 from trainproof.epoch import check_records
-from trainproof.objective import TargetCoverage, check_ignore_index
+from trainproof.objective import TargetCoverage, check_ignore_index, check_label_alignment
 
 
 def _infer_num_classes(model):
@@ -34,6 +34,115 @@ def _labels_from_batch(batch):
     if isinstance(batch, (list, tuple)) and len(batch) >= 2:
         return batch[-1]
     return None
+
+
+def _input_ids_from_batch(batch):
+    """The model inputs the labels are meant to be aligned with.
+
+    Only the explicit key counts. A positional batch is guessed at for labels
+    (batch[-1]) because that convention is near-universal, but there is no equally
+    safe guess for the inputs, and a wrong guess here would produce a FAIL against
+    a correct run. Absent means the alignment check does not run.
+    """
+    if isinstance(batch, dict):
+        return batch.get("input_ids")
+    return None
+
+
+def _unwrap(model):
+    """Peel the wrappers that sit between a Trainer and the real module.
+
+    PEFT, DDP/FSDP (`.module`) and `torch.compile` (`._orig_mod`) all present a class
+    whose name says nothing about the loss. Without this the confirmation below reports
+    "unknown" for most real training setups -- safe, but it would disable the check for
+    almost everyone.
+    """
+    seen = 0
+    while seen < 5:
+        nxt = None
+        if hasattr(model, "get_base_model"):
+            try:
+                nxt = model.get_base_model()
+            except Exception:  # noqa: BLE001 - a wrapper that refuses is just the end
+                nxt = None
+        if nxt is None:
+            # Explicit None tests, not `or`: an nn.ModuleDict/ModuleList defines
+            # __len__, so an empty one is FALSY while being perfectly present, and
+            # `a or b` would silently skip it and halt the unwrap chain here.
+            nxt = getattr(model, "_orig_mod", None)
+            if nxt is None:
+                nxt = getattr(model, "module", None)
+        if nxt is None or nxt is model:
+            return model
+        model = nxt
+        seen += 1
+    return model
+
+
+def _loss_shifts_labels(model):
+    """Does THIS model's forward shift labels before the loss? True, False or None.
+
+    Returns True only for a class that **transformers itself** defines and whose name
+    ends in `ForCausalLM`, because those are the forwards that perform the shift. The
+    module-origin half is the load-bearing half: a user subclass called
+    `MyForCausalLM` that overrides `forward` with a non-shifting loss would otherwise
+    be confirmed as shifting, and a correct run would be failed. A subclass defined in
+    user code has its own `__module__`, so it reports unknown, which never fails.
+
+    Never returns False. There is no way to confirm a negative about someone else's
+    loss function, so `False` is only ever supplied explicitly by a caller.
+
+    ⚠️ **This confirms the model, which is not the same as confirming the loss.** A
+    `Trainer` subclass that overrides `compute_loss` can bypass `model(..., labels=...)`
+    entirely and compute a loss with different conventions. That is not visible from the
+    model object, and the callback is never handed the trainer. A caller in that position
+    should pass `loss_shifts=` to `TrainproofCallback` explicitly; both adversarial
+    reviewers raised this and it is recorded in RULES.md rather than papered over.
+    """
+    cfg = getattr(model, "config", None)
+    if cfg is not None and getattr(cfg, "is_encoder_decoder", False):
+        # Encoder-decoder derives decoder_input_ids from labels internally, and
+        # input_ids is the ENCODER's source sequence. The convention does not apply.
+        return None
+    # The UNWRAPPED module only. Testing the outer wrapper as well would widen the set
+    # of objects that can answer True, and every widening here is a step toward failing
+    # a correct run.
+    cls = type(_unwrap(model))
+    origin = getattr(cls, "__module__", "") or ""
+    if origin.startswith("transformers.") and cls.__name__.endswith("ForCausalLM"):
+        return True
+    return None
+
+
+def _is_streaming(loader):
+    """Would sampling this dataloader consume the user's training data?
+
+    A map-style dataset can be iterated again from the start at no cost. A streaming
+    one may not be restartable, so taking a fresh iterator here can permanently drop
+    batches from the real epoch. Detected without importing torch: by class name
+    anywhere in the MRO -- `torch.utils.data.IterableDataset` and
+    `datasets.IterableDataset` are different classes that share a name, and both are
+    streaming, so the collision is harmless here -- and by the absence of `__len__`,
+    which is the property that actually makes a dataset non-indexable.
+
+    Name-based detection can miss an exotic wrapper. It is deliberately biased toward
+    reporting "streaming" and skipping the sample: a missed check is recoverable, and
+    silently eating a user's training data is not.
+    """
+    ds = getattr(loader, "dataset", None)
+    if ds is None:
+        return False
+    if any(c.__name__ == "IterableDataset" for c in type(ds).__mro__):
+        return True
+    # No __len__ AND no __getitem__. Requiring both narrows this away from map-style
+    # datasets: a map-style dataset without __len__ cannot drive DataLoader's default
+    # sampler anyway, so demanding the absence of __getitem__ too costs nothing and
+    # stops the guard from disabling the check on a legitimate indexable dataset.
+    return (
+        hasattr(ds, "__iter__")
+        and not hasattr(ds, "__len__")
+        and not hasattr(ds, "__getitem__")
+    )
 
 
 def _convert_state_to_records(state) -> list[dict]:
@@ -106,7 +215,7 @@ class TrainproofCallback(TrainerCallback):
 
     def __init__(self, policy="warn", check_every=25, min_points=10,
                  objective_check=True, objective_batches=32,
-                 num_classes=None, ignore_index=None):
+                 num_classes=None, ignore_index=None, loss_shifts=None):
         if not _HAS_TRANSFORMERS:
             raise ImportError("pip install transformers is required to use TrainproofCallback")
         self.policy = policy
@@ -125,6 +234,11 @@ class TrainproofCallback(TrainerCallback):
         self.objective_batches = objective_batches
         self.num_classes = num_classes
         self.ignore_index = ignore_index
+        # Whether the LOSS shifts labels. None asks the model, which can only ever
+        # answer True or "unknown". Pass it explicitly if you override
+        # `Trainer.compute_loss`: that bypasses the model's own loss, so the model
+        # object no longer describes the convention actually in force.
+        self.loss_shifts = loss_shifts
 
     def on_train_begin(self, args, state, control, **kwargs):
         if not self.objective_check:
@@ -143,15 +257,32 @@ class TrainproofCallback(TrainerCallback):
 
         findings = list(check_ignore_index(n, ig))
 
+        if loader is not None and _is_streaming(loader):
+            # Sampling a stream is not free: a fresh iterator over a non-restartable
+            # dataset takes batches the training epoch will never see. Refusing to
+            # measure is the correct outcome; eating the user's data to produce a
+            # finding is not.
+            print("\nTRAINPROOF - objective sampling skipped: streaming dataloader, "
+                  "reading it here would consume batches from the training epoch")
+            loader = None
+
         if loader is not None:
             cov = TargetCoverage(n, ig)
             seen = 0
+            # The alignment check needs input_ids and labels from the SAME batch, and
+            # one batch carries far more than the positions it needs. Coverage wants
+            # many batches; alignment wants one. Keep the first usable pair.
+            first_pair = None
             try:
                 # A FRESH iterator: the trainer's own epoch must not lose batches.
                 for batch in loader:
                     labels = _labels_from_batch(batch)
                     if labels is not None:
                         cov.observe(labels)
+                        if first_pair is None:
+                            input_ids = _input_ids_from_batch(batch)
+                            if input_ids is not None:
+                                first_pair = (input_ids, labels)
                     seen += 1
                     if seen >= self.objective_batches:
                         break
@@ -162,6 +293,14 @@ class TrainproofCallback(TrainerCallback):
             else:
                 if cov.n_targets:
                     findings.extend(cov.result())
+                if first_pair is not None:
+                    shifts = (
+                        self.loss_shifts if self.loss_shifts is not None
+                        else _loss_shifts_labels(model)
+                    )
+                    findings.extend(check_label_alignment(
+                        first_pair[0], first_pair[1], ig, loss_shifts=shifts,
+                    ))
 
         problems = [f for f in findings if f.get("level") == "FAIL"]
         if problems:

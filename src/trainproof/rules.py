@@ -138,6 +138,43 @@ DEAD_CLASS_MIN_COVERAGE = 0.5
 # structural exclusion, and the finding stops being actionable.
 DEAD_CLASS_MAX_REPORTED = 8
 
+# Causal-LM label alignment. The HuggingFace convention is that `labels` are passed
+# ALIGNED with `input_ids` and the loss shifts them internally, comparing the logits
+# at position i with the label at i+1. A caller who shifts the labels themselves gets
+# that shift applied twice, and the model is then trained to predict two tokens ahead.
+# Nothing crashes: the shapes stay valid, gradients flow, and the loss falls. It is the
+# same shape of defect as the ignore_index collision -- invisible in the curve, decidable
+# at step 0 -- which is why it lives beside it.
+#
+# The fraction must be near-total rather than a majority, because the two hypotheses are
+# not exclusive: wherever input_ids[i] == input_ids[i+1] a position matches both. Only a
+# near-total match in exactly one direction is evidence, and matching both directions is
+# a degenerate sample rather than a verdict.
+LABEL_ALIGNMENT_MATCH_FRACTION = 0.99
+
+# Below this many comparable positions the sample cannot separate the two hypotheses,
+# and the check reports NOT-CHECKED rather than guessing from a handful of tokens.
+LABEL_ALIGNMENT_MIN_POSITIONS = 32
+
+# Positions inside one sequence are not independent observations, so the verdict is a
+# vote over ROWS and a row must carry at least this many comparable positions to vote.
+LABEL_ALIGNMENT_MIN_ROW_POSITIONS = 8
+
+# Share of INFORMATIVE rows that must agree. Not unanimity: two independent adversarial
+# reviews both pointed out that one anomalous row -- an all-padding row, a template row
+# of repeated tokens -- would otherwise veto a double shift visible in every other row.
+# Rows that cannot discriminate are excluded from the vote rather than allowed to block it.
+LABEL_ALIGNMENT_ROW_AGREEMENT = 0.75
+
+# Inspecting a handful of positions must not drag a whole batch off the accelerator, so
+# the batch is sliced BEFORE any device transfer. Columns are taken from the END: SFT
+# masks the prompt on the LEFT, so the unmasked completion lives at the tail of the row,
+# and a head-slice would see nothing but ignore_index and report NOT-CHECKED on exactly
+# the workload this check exists for. A contiguous tail slice preserves the i / i+1
+# adjacency the comparison depends on.
+LABEL_ALIGNMENT_MAX_ROWS = 8
+LABEL_ALIGNMENT_MAX_COLS = 1024
+
 # -----------------
 # ENVIRONMENT PREFLIGHT
 # -----------------

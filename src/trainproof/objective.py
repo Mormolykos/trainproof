@@ -1,6 +1,6 @@
 """Checks on the loss objective itself, rather than on the data or the curve.
 
-Both checks here exist because of one real failure. A VALL-E-X-derived TTS model
+The checks here exist because of one real failure. A VALL-E-X-derived TTS model
 trained for fifteen epochs with `eos_id` and `ignore_index` set to the same integer.
 Every end-of-sequence target was therefore discarded before the loss saw it, and the
 model was never taught to stop. The loss curve was healthy throughout; a minimal
@@ -68,6 +68,224 @@ def check_ignore_index(num_classes, ignore_index):
         }]
 
     return []
+
+
+def _to_rows(seq):
+    """Normalise a batch of ids to a list of int rows. Returns [] if it cannot.
+
+    The slice happens BEFORE any device transfer. Inspecting a few dozen positions must
+    not copy an entire batch off the accelerator, and slicing behaves identically on a
+    tensor and on a list, so no tensor library is needed to do it.
+    """
+    # Row slice first, while this may still be a device tensor.
+    try:
+        seq = seq[: rules.LABEL_ALIGNMENT_MAX_ROWS]
+    except (TypeError, IndexError, KeyError):
+        return []
+
+    if hasattr(seq, "detach"):
+        seq = seq.detach().cpu()
+    if hasattr(seq, "tolist"):
+        seq = seq.tolist()
+    if not isinstance(seq, (list, tuple)) or not seq:
+        return []
+
+    def tail(row):
+        # The TAIL, never the head: SFT masks the prompt on the left, so a head slice
+        # of a long sequence sees only ignore_index. Contiguous, so i / i+1 survives.
+        return row[-rules.LABEL_ALIGNMENT_MAX_COLS:]
+
+    if isinstance(seq[0], (list, tuple)):
+        rows = []
+        for row in seq:
+            if not isinstance(row, (list, tuple)):
+                return []
+            try:
+                rows.append([int(v) for v in tail(row)])
+            except (TypeError, ValueError):
+                return []
+        return rows
+    try:
+        return [[int(v) for v in tail(seq)]]
+    except (TypeError, ValueError):
+        return []
+
+
+def check_label_alignment(input_ids, labels, ignore_index=-100, loss_shifts=None):
+    """Are the labels aligned the way this loss expects, or shifted one time too many?
+
+    In the HuggingFace causal-LM convention `labels` arrive ALIGNED with `input_ids`
+    and the loss does the shift, scoring the logits at position i against the label at
+    i+1. A caller who pre-shifts gets the shift twice, and the model is trained to
+    predict two tokens ahead. Shapes stay valid, gradients flow, the loss falls, and
+    the curve is indistinguishable from a healthy run.
+
+    Two hypotheses are counted over every unmasked position:
+
+        labels[i] == input_ids[i]      the labels are aligned
+        labels[i] == input_ids[i + 1]  the labels are already shifted
+
+    They are counted independently, not exclusively, because wherever a token repeats
+    (`input_ids[i] == input_ids[i+1]`) a position satisfies both.
+
+    ``loss_shifts`` is what turns an observation into a verdict, and it defaults to
+    None:
+
+      * **None -- unknown. This function will never FAIL.** Which arrangement is
+        *correct* is a property of the loss, not of the tensors, and the tensors cannot
+        reveal it. A custom loop that pre-shifts its labels AND pairs that with a loss
+        that does not shift is training correctly. An earlier draft of this check
+        failed exactly that case; a false FAIL under ``stop_on_fail`` aborts a correct
+        run, which is the worst thing this library can do.
+      * **True -- the loss shifts** (a confirmed HuggingFace causal LM): pre-shifted
+        labels FAIL, aligned labels PASS.
+      * **False -- the loss does not shift**: aligned labels FAIL, because the model is
+        being trained to emit the token it was just given. This value is only ever
+        supplied by a caller asserting it. **It is never inferred**, because there is no
+        way to confirm a negative about someone else's loss function.
+
+    The verdict is a vote over ROWS, not a pooled count over positions: positions inside
+    one sequence are not independent observations. Rows that cannot discriminate are
+    excluded from the vote rather than allowed to veto it.
+    """
+    rows_in = _to_rows(input_ids)
+    rows_lab = _to_rows(labels)
+
+    def not_measured(reason):
+        return [{
+            "id": "TP-OBJ-LABEL-SHIFT-NOT-MEASURED",
+            "level": "NOT-CHECKED",
+            "message": "label/input alignment was not measured",
+            "evidence": reason,
+        }]
+
+    if not rows_in or not rows_lab:
+        return not_measured("input_ids or labels could not be read as integer rows")
+    if len(rows_in) != len(rows_lab):
+        return not_measured(
+            f"batch mismatch: {len(rows_in)} input rows vs {len(rows_lab)} label rows"
+        )
+
+    ignore_index = int(ignore_index)
+    threshold = rules.LABEL_ALIGNMENT_MATCH_FRACTION
+
+    total = 0
+    votes = {"aligned": 0, "shifted": 0, "both": 0, "neither": 0}
+    # Row counts were equalised above, so strict= expresses the invariant rather
+    # than guarding against it.
+    for ids, labs in zip(rows_in, rows_lab, strict=True):
+        if len(ids) != len(labs):
+            continue
+        n_r = aligned_r = shifted_r = 0
+        # The last position is excluded: input_ids[i+1] does not exist there, so it
+        # could only ever feed the aligned hypothesis. Counting it would measure the
+        # two hypotheses on different samples and bias the comparison toward PASS.
+        for i in range(len(labs) - 1):
+            if labs[i] == ignore_index:
+                continue
+            n_r += 1
+            if labs[i] == ids[i]:
+                aligned_r += 1
+            if labs[i] == ids[i + 1]:
+                shifted_r += 1
+        total += n_r
+        if n_r < rules.LABEL_ALIGNMENT_MIN_ROW_POSITIONS:
+            continue
+        a_r = aligned_r / n_r
+        s_r = shifted_r / n_r
+        if a_r >= threshold and s_r >= threshold:
+            votes["both"] += 1
+        elif s_r >= threshold:
+            votes["shifted"] += 1
+        elif a_r >= threshold:
+            votes["aligned"] += 1
+        else:
+            votes["neither"] += 1
+
+    judgeable = sum(votes.values())
+    informative = votes["aligned"] + votes["shifted"]
+
+    if total < rules.LABEL_ALIGNMENT_MIN_POSITIONS:
+        return not_measured(
+            f"only {total} comparable unmasked positions, "
+            f"need {rules.LABEL_ALIGNMENT_MIN_POSITIONS}"
+        )
+    if not judgeable:
+        return not_measured(
+            f"no row carried {rules.LABEL_ALIGNMENT_MIN_ROW_POSITIONS} comparable positions"
+        )
+    if not informative:
+        return not_measured(
+            f"no row discriminated: {votes['both']} degenerate (repeated tokens), "
+            f"{votes['neither']} where the labels are not a copy of input_ids"
+        )
+    # Informative rows must be most of what was judged. A batch where a minority of rows
+    # happen to look like a copy of the inputs is not evidence about the collator.
+    if informative * 2 < judgeable:
+        return not_measured(
+            f"only {informative} of {judgeable} judgeable rows discriminated "
+            f"({votes['both']} degenerate, {votes['neither']} not a copy of input_ids)"
+        )
+
+    winner = "shifted" if votes["shifted"] >= votes["aligned"] else "aligned"
+    agreement = votes[winner] / informative
+    if agreement < rules.LABEL_ALIGNMENT_ROW_AGREEMENT:
+        return not_measured(
+            f"rows disagree: {votes['aligned']} aligned vs {votes['shifted']} shifted "
+            f"of {informative} informative rows"
+        )
+
+    detail = (
+        f"{votes[winner]}/{informative} informative rows (of {judgeable} judgeable, "
+        f"{total} positions)"
+    )
+
+    if winner == "shifted":
+        if loss_shifts is True:
+            return [{
+                "id": "TP-OBJ-LABEL-SHIFT-DOUBLE",
+                "level": "FAIL",
+                "message": (
+                    "labels are pre-shifted against input_ids and this loss shifts them "
+                    "again - the model is trained to predict two tokens ahead"
+                ),
+                "evidence": f"labels[i]==input_ids[i+1] in {detail}",
+            }]
+        if loss_shifts is False:
+            return [{
+                "id": "TP-OBJ-LABEL-SHIFT-OK",
+                "level": "PASS",
+                "message": "labels are pre-shifted, which is what a non-shifting loss expects",
+                "evidence": f"labels[i]==input_ids[i+1] in {detail}",
+            }]
+        return not_measured(
+            f"labels[i]==input_ids[i+1] in {detail}, but whether that is correct depends "
+            "on whether this loss shifts, which cannot be read from the tensors. Pass "
+            "loss_shifts=True (HuggingFace causal-LM convention) to judge it."
+        )
+
+    if loss_shifts is False:
+        return [{
+            "id": "TP-OBJ-LABEL-SHIFT-DOUBLE",
+            "level": "FAIL",
+            "message": (
+                "labels are aligned with input_ids and this loss does not shift them - "
+                "the model is trained to emit the token it was just given"
+            ),
+            "evidence": f"labels[i]==input_ids[i] in {detail}",
+        }]
+    if loss_shifts is True:
+        return [{
+            "id": "TP-OBJ-LABEL-SHIFT-OK",
+            "level": "PASS",
+            "message": "labels are aligned with input_ids, as the causal-LM loss expects",
+            "evidence": f"labels[i]==input_ids[i] in {detail}",
+        }]
+    return not_measured(
+        f"labels[i]==input_ids[i] in {detail}, but whether that is correct depends on "
+        "whether this loss shifts, which cannot be read from the tensors. Pass "
+        "loss_shifts=True (HuggingFace causal-LM convention) to judge it."
+    )
 
 
 class TargetCoverage:
@@ -144,9 +362,22 @@ class TargetCoverage:
         return findings
 
 
-def check_objective(num_classes, ignore_index=None, targets=None):
-    """One-shot convenience wrapper. `targets` may be a single batch or an iterable."""
+def check_objective(num_classes, ignore_index=None, targets=None, input_ids=None,
+                    loss_shifts=None):
+    """One-shot convenience wrapper. `targets` may be a single batch or an iterable.
+
+    `input_ids` is optional and enables the causal-LM alignment check only when the
+    caller can supply the same batch the labels came from. Omitting it leaves that
+    check unrun rather than guessed. `loss_shifts` defaults to None, which can observe
+    an arrangement but will never fail one -- see `check_label_alignment`.
+    """
     findings = list(check_ignore_index(num_classes, ignore_index))
+
+    if input_ids is not None and targets is not None:
+        findings.extend(check_label_alignment(
+            input_ids, targets, -100 if ignore_index is None else ignore_index,
+            loss_shifts=loss_shifts,
+        ))
 
     if targets is not None:
         cov = TargetCoverage(num_classes, ignore_index)
