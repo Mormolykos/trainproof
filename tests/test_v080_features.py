@@ -132,7 +132,7 @@ def test_gallery_regression(capsys):
     assert verdicts.get("fp16_nan") == "FAIL"
 
 def test_all_emitted_ids_in_rules():
-    rules_md = (Path(__file__).parent.parent / "RULES.md").read_text()
+    rules_md = (Path(__file__).parent.parent / "RULES.md").read_text(encoding="utf-8")
     
     # Extract IDs from RULES.md
     import re

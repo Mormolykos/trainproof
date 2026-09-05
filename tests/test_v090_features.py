@@ -55,5 +55,5 @@ def test_train_only_log():
 
 def test_tp_overfit_in_rules():
     # id-in-RULES.md test: TP-OVERFIT present.
-    rules_md = (Path(__file__).parent.parent / "RULES.md").read_text()
+    rules_md = (Path(__file__).parent.parent / "RULES.md").read_text(encoding="utf-8")
     assert "`TP-OVERFIT`" in rules_md
