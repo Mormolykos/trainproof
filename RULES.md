@@ -15,6 +15,8 @@ These rules run on a single training log (via `trainproof epoch` or `trainproof 
 | `TP-NOT-CHECKED` | NOT-CHECKED | The number of check groups that executed is exactly zero, which requires fewer than five loss points AND a non-positive mean loss, with no other judgeable column (e.g. a short run whose loss is all zeros, the sub-threshold companion to `TP-ZERO-LOSS`). The run was not judged. Reaching this through the CLI exits `2` (cannot judge), not `1`. |
 | `TP-NAN` | FAIL | The loss curve contains NaN or Infinity values. |
 | `TP-ZERO-LOSS` | FAIL | Every finite loss is **exactly** 0.0 (minimum 5 points). Cross-entropy returns 0.0 when every target label is masked to `-100`, so the usual cause is the data collator's prompt masking or a response truncated out of the context window. Detected by exact equality, never a threshold: a very small loss is real convergence, which is a different thing. |
+| `TP-ZERO-LOSS-ONSET` | FAIL | The loss was positive and then became **exactly** 0.0 for the rest of the run (minimum 5 trailing points). `TP-ZERO-LOSS` requires *every* loss to be zero and so cannot see a run that was alive first. Detected by exact equality for the same reason: a converging loss approaches zero without landing on it, while every ratio-shaped rule reads the collapse as a large improvement. |
+| `TP-NAN-GRAD` | FAIL | One or more logged gradient norms are NaN or Inf. Non-finite gradients reached the optimizer, so the weights are non-finite from that step onward. |
 | `TP-ZERO-GRAD` | FAIL | Every finite gradient norm is **exactly** 0.0 (minimum 5 points). The backward graph is severed or every parameter is frozen; with PEFT this is usually reentrant gradient checkpointing over frozen input embeddings, which detaches the graph before it reaches the adapters. |
 | `TP-FLAT` | FAIL | The loss curve is completely flat (relative variation < 0.001). The run is dead. |
 | `TP-DIVERGE` | FAIL | The run is diverging: the end loss is >1.5x the lowest **nonzero** loss observed. |
@@ -106,6 +108,7 @@ These rules validate tokenizers and datasets (via `trainproof tokenizer` or `tra
 | `TP-PRE-MISSING-EOS-TOKEN`| FAIL | The tokenizer has no `eos_token`. |
 | `TP-PRE-MISSING-PAD-TOKEN`| WARN | The tokenizer has no `pad_token`. |
 | `TP-PRE-PAD-EQUALS-EOS` | WARN | The `pad_token_id` equals the `eos_token_id`. |
+| `TP-PRE-NO-EOS-APPEND` | WARN | The tokenizer has an `eos_token` but `add_eos_token` is `False`, so encoding appends none. Distinct from `TP-PRE-MISSING-EOS-TOKEN`: the token exists, it simply never enters the sequence. Only a literal `False` reports — an absent attribute is UNKNOWN and says nothing, because most tokenizer families do not define it and many callers append EOS themselves. WARN rather than FAIL for that reason. When `pad_token_id == eos_token_id` the evidence escalates: the two are then the same integer, so a collator masking padding masks a genuine EOS with it and nothing in `input_ids` can separate them. |
 | `TP-PRE-BOS-TOKEN-INFO` | INFO | Status of the `bos_token`. |
 | `TP-PRE-CONTEXT-CHECK-SKIPPED`| INFO | Context length check skipped (missing `--max-len`). |
 | `TP-PRE-CONTEXT-OVERFLOW` | WARN | Records exceed the maximum context length. |

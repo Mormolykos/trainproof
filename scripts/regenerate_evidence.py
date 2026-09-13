@@ -36,6 +36,11 @@ EVIDENCE_RUNS = [
     ("Coqui XTTS v2", "xtts_coqui_feb2026", "trainer_0_log.txt", "coqui"),
     ("Coqui XTTS v2", "xtts_coqui_feb2026", None, "tfevents"),
     ("Lightning / Fish Speech", "fish_lightning_feb2026", None, "tfevents"),
+    # The run v0.20.0 returned PASS and exit 0 on. Added in v0.21 with the two
+    # rules it produced; see that directory's README for why five separate
+    # checks each declined. Kept in the matrix because a rule justified by a
+    # real log should be re-proved against that log on every regeneration.
+    ("TinyLlama 1.1B SFT", "web_chat_tinyllama_apr2025", "trainer_state.json", "hf"),
 ]
 
 BASELINE = "healthy"

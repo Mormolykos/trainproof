@@ -98,7 +98,7 @@ def test_honest_tp_pass():
         "zero-loss", "flat-loss", "divergence", "dead-run",
     }
     assert set(report["checks"]["skipped"]) == {
-        "zero-grad", "grad-spike", "lr", "step-time", "loader", "overfit",
+        "zero-grad", "grad-finite", "grad-spike", "lr", "step-time", "loader", "overfit",
     }
 
     ran_segment = pass_finding["message"].split("Skipped:")[0]

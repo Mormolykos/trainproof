@@ -1,0 +1,7 @@
+31F7BBE0E28EDB42B05A3F9823A81610334D36DFBC4BE2D6B5BFA3CEC2BF872F      6423  trainer_state.json  <- C:\Users\User\Desktop\Legacy\web_chat_ai\web_chat_finetuned\checkpoint-360\trainer_state.json
+486BEDDA3A6988332E60D9638A09CA4B260D34EBCF1B19E22CF3B140B63D8FE9       608  config.base.json  <- C:\Users\User\Desktop\Legacy\web_chat_ai\config.json
+793AFD9286525DF5EA9584F662371FCD060169A787A2FBE0E48F4455FF392C46       703  config.checkpoint-360.json  <- C:\Users\User\Desktop\Legacy\web_chat_ai\web_chat_finetuned\checkpoint-360\config.json
+55364E90CE354B56A65CF60E13F59EC1A7447B09836A28F84CB4DCD2A6F16FAA       966  tokenizer_config.json  <- C:\Users\User\Desktop\Legacy\web_chat_ai\web_chat_finetuned\checkpoint-360\tokenizer_config.json
+5B18BA568F6C316C147DD3FE13D8C8B1180759E821EA1064A273A45B7E61A0E0       101  special_tokens_map.json  <- C:\Users\User\Desktop\Legacy\web_chat_ai\web_chat_finetuned\checkpoint-360\special_tokens_map.json
+96A2875961419C0836C875350721F3C3F48A3E9AABA6828ECD20FD8EE6D90871      2161  qlora_train.py  <- C:\Users\User\Desktop\Legacy\web_chat_ai\training_scripts\qlora_train.py
+3B55F5E9A105913B1BBAB3D07975662083AA4B0126DE40875E3B5F67DD4D6444       743  intended_qlora_command.sh.txt  <- C:\Users\User\Desktop\Legacy\web_chat_ai\web_chat_training.jsonl

@@ -28,6 +28,11 @@ REASONS = {
     "no step_time column in the log": coverage.DATA_TRANSIENT,
     "no loss column in the log": coverage.DATA_TRANSIENT,
     "no loader_time/step_time pair in the log": coverage.DATA_TRANSIENT,
+    # The column was never emitted -- fixed by logging configuration. Its
+    # near-twin "no finite gradient norms in the log" is below under
+    # DATA_DEGENERATE, and the pair is exactly the distinction
+    # test_absent_and_unusable_are_not_the_same_state defends.
+    "no grad_norm column in the log": coverage.DATA_TRANSIENT,
     "no eval_loss in the log - this run has no generalisation signal at all":
         coverage.DATA_TRANSIENT,
     "no finite gradient norms in the log": coverage.DATA_DEGENERATE,

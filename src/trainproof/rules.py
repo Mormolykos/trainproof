@@ -86,6 +86,33 @@ OVERFIT_MIN_EVALS = 4
 # magnitude.
 MIN_POINTS_FOR_DEGENERATE_CHECK = 5
 
+# Degenerate-series detection, second layer (added in v0.21 from a real 2025
+# run recovered off disk: TinyLlama-1.1B, 360 steps, 16 GB of checkpoints).
+#
+# v0.11.1 above fixed the case where a series is zero on EVERY step. It did not
+# fix the two cases that run produced, and trainproof 0.20.0 returned TP-PASS
+# and exit 0 on it:
+#
+#   1. The loss was POSITIVE first (2.859 at step 10) and exactly 0.0 for the
+#      remaining 35 logged steps. `all(v == 0.0)` is False, so TP-ZERO-LOSS
+#      never fires, and the huge 2.859 -> 0.0 drop reads as spectacular
+#      convergence to every ratio-shaped rule in this file.
+#   2. Every gradient norm was NaN. `valid_gns` filters non-finite values out,
+#      so it came back empty, and zero-grad and grad-spike both SKIPPED
+#      themselves with "no finite gradient norms in the log".
+#
+# Cause, confirmed in the transformers source rather than inferred: fp16 weights
+# were trained with `fp16=False`, so no GradScaler existed, gradients overflowed
+# to NaN, and `TrainingArguments.logging_nan_inf_filter` -- which defaults to
+# TRUE -- then replaced every NaN loss with `_tr_loss / (1 + steps)`. Because
+# `_tr_loss` is zeroed at each logging step, that expression is exactly 0.0
+# forever. The trainer cosmetically rewrote a dead run into a clean-looking log.
+#
+# So the tail length is the same 5 points as above, for the same reason: exact
+# equality to 0.0, sustained, is structural. A run does not land on 0.0 and stay
+# there by converging.
+MIN_ZERO_TAIL_FOR_ONSET = 5
+
 # -----------------
 # COMPARE SUBCOMMAND
 # -----------------

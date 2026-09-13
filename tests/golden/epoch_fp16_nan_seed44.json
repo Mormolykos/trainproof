@@ -3,6 +3,7 @@
   "finding_ids": [
     "TP-DEAD-RUN",
     "TP-DIVERGE",
-    "TP-GRAD-SPIKE"
+    "TP-GRAD-SPIKE",
+    "TP-NAN-GRAD"
   ]
 }

@@ -8,6 +8,59 @@ All notable changes to trainproof are documented here. Format follows
 
 Nothing yet.
 
+## [0.21.0] — 2026-09-13 — the run trainproof passed
+
+### Added
+
+- **`TP-NAN-GRAD` (FAIL) and `TP-ZERO-LOSS-ONSET` (FAIL).** From a 2026-04 SFT run
+  recovered off disk on 2026-09-13 — TinyLlama-1.1B, 360 steps, 16.4 GB of
+  checkpoints, dead from step 11. **trainproof 0.20.0 reported `TP-PASS` and exit 0
+  on it.** Preserved with its configs at
+  `evidence/web_chat_tinyllama_apr2025/`, and now a row in `EVIDENCE_MATRIX.md`.
+
+  fp16 weights were trained with `fp16=False`, so no `GradScaler` existed and the
+  gradients went NaN. Then `TrainingArguments.logging_nan_inf_filter` — which
+  **defaults to True** — substituted `_tr_loss / (1 + steps)` for each NaN loss, and
+  since `_tr_loss` is zeroed at every logging step that is **exactly 0.0 forever**.
+  The trainer rewrote a dead run into a log that reads like perfect convergence.
+
+  Five checks each declined, every one for a reason *caused by the defect*:
+  `TP-NAN` reads the loss column (zeros, not NaN); `TP-ZERO-LOSS` needs *every*
+  loss zero (step 10 was 2.859); `TP-ZERO-GRAD` and `TP-GRAD-SPIKE` read
+  `valid_gns`, which filters non-finite values and was therefore empty, so both
+  **skipped themselves**; `TP-DEAD-RUN` took a median over four zeros and skipped on
+  "starting loss is not positive". The worse the corruption, the quieter trainproof
+  became. This is the v0.11.1 degenerate-series bug one layer deeper — that release
+  fixed the series that is zero on *every* step; these are the series that dies
+  *partway* and the series that is *non-finite* rather than zero.
+
+- **`TP-PRE-NO-EOS-APPEND` (WARN).** The tokenizer has an `eos_token` but
+  `add_eos_token` is `False`, so encoding appends none — distinct from
+  `TP-PRE-MISSING-EOS-TOKEN`, where the token itself is absent. Only a literal
+  `False` reports: most tokenizer families do not define the attribute and many
+  callers append EOS themselves, so anything else is UNKNOWN and says nothing.
+  WARN rather than FAIL for the same reason a false FAIL is the worst thing this
+  library can do. When `pad_token_id == eos_token_id` the evidence escalates — the
+  two are then one integer, so a collator masking padding masks a genuine EOS with
+  it and no inspection of `input_ids` can separate them.
+
+### Fixed
+
+- **Three crashes where `CONTRACTS.md` promises a verdict or a documented exit.**
+  Found by the property fuzz written for the rules above (R19: hand-written
+  regression tests cannot certify a rejecter), not by a case anyone had listed.
+  `CheckContext` gated every metric on `is not None` and then passed it to
+  `math.isnan()`, so a column logged as a string, list or dict raised `TypeError`
+  out of the constructor; `step` had the same exposure inside `check_throughput`'s
+  arithmetic; and `eval_loss_steps` used `r.get("step", i)`, whose default covers a
+  *missing* key but not a present-and-null one, letting `None` reach a `>=` against
+  an int in `check_overfit`.
+
+  All three are one defect: **no field had a declared domain.** `_num()` now
+  declares it — a metric is a real number, `bool` excluded as an `int` subclass —
+  and a value failing that predicate is treated exactly as **absent**, which is
+  UNKNOWN and never a positive finding.
+
 ## [0.20.0] — 2026-09-05 — a second objective bug the loss curve cannot see
 
 ### Added

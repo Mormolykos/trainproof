@@ -15,6 +15,7 @@ from .adapters import parse_log_with_format
 CHECK_GROUPS = (
     "zero-loss",
     "zero-grad",
+    "grad-finite",
     "flat-loss",
     "divergence",
     "dead-run",
@@ -45,6 +46,25 @@ def _nothing_ran(reason: str) -> dict[str, Any]:
     return _checks([], {g: reason for g in CHECK_GROUPS})
 
 
+def _num(value: Any) -> float | None:
+    """The domain of every metric column: a real number, or absent.
+
+    R19: code that accepts or rejects evidence declares the predicate a value
+    must satisfy, and a value failing it is treated exactly as ABSENT. Until
+    v0.21 the only predicate here was `is not None`, so a metric logged as a
+    string, a list or a dict reached `math.isnan()` and raised TypeError out of
+    the constructor -- an uncaught crash where CONTRACTS.md promises a verdict
+    or a documented "cannot judge" exit. Found by a property probe over
+    non-numeric column values, not by a case anyone had thought of.
+
+    `bool` is excluded deliberately: it is a subclass of `int`, so `True` would
+    otherwise become a loss of 1.0 and be judged as if someone had measured it.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
 class CheckContext:
     def __init__(self, records: list[dict]):
         self.records = records
@@ -54,22 +74,31 @@ class CheckContext:
         self.loss_steps = []
         self.lrs = []
         self.grad_norms = []
+        self.grad_steps = []
         self.times = []
         self.time_steps = []
 
         for i, r in enumerate(records):
-            step = r.get("step")
+            # `step` is arithmetic downstream (throughput spans, evidence
+            # strings), so it carries the same domain as any metric. A
+            # non-numeric step falls back to the record index rather than
+            # propagating into a subtraction -- the fuzz in
+            # tests/test_v021_nan_grad.py reached `check_throughput` with two
+            # string steps and crashed there, in code older than this release.
+            step = _num(r.get("step"))
             step = i if step is None else step
-            loss = r.get("loss")
-            lr = r.get("lr")
-            gn = r.get("grad_norm")
-            t = r.get("time")
+            loss = _num(r.get("loss"))
+            lr = _num(r.get("lr"))
+            gn = _num(r.get("grad_norm"))
+            t = _num(r.get("time"))
 
             if loss is not None:
                 self.losses.append(loss)
                 self.loss_steps.append(step)
             if lr is not None: self.lrs.append(lr)
-            if gn is not None: self.grad_norms.append(gn)
+            if gn is not None:
+                self.grad_norms.append(gn)
+                self.grad_steps.append(step)
             if t is not None:
                 self.times.append(t)
                 self.time_steps.append(step)
@@ -80,18 +109,24 @@ class CheckContext:
         self.eval_losses = []
         self.eval_loss_steps = []
         for i, r in enumerate(records):
-            el = r.get("eval_loss")
+            el = _num(r.get("eval_loss"))
             if el is not None and not math.isnan(el) and not math.isinf(el):
                 self.eval_losses.append(el)
-                self.eval_loss_steps.append(r.get("step", i))
+                # `r.get("step", i)` returned None whenever the key existed and
+                # was null -- the default only covers a MISSING key, not a
+                # present-and-unusable value. That None reached a `>=` against
+                # an int in check_overfit. Same domain, same index fallback as
+                # the loop above.
+                eval_step = _num(r.get("step"))
+                self.eval_loss_steps.append(i if eval_step is None else eval_step)
                 
         self.step_times = []
         self.valid_loader_fractions = []
         self.gpu_utils = []
         for r in records:
-            st = r.get("step_time")
-            lt = r.get("loader_time")
-            gu = r.get("gpu_util")
+            st = _num(r.get("step_time"))
+            lt = _num(r.get("loader_time"))
+            gu = _num(r.get("gpu_util"))
             
             if st is not None and not math.isnan(st) and not math.isinf(st):
                 self.step_times.append(st)
@@ -115,6 +150,70 @@ def check_nan(ctx: CheckContext) -> list[dict]:
         return [{"id": "TP-NAN", "level": "FAIL", "message": "NaN or Inf detected in loss.", "evidence": f"Steps: {nan_steps[:5]}..."}]
     return []
 
+def check_nan_grad(ctx: CheckContext) -> list[dict]:
+    """Judge the gradient-norm column against its domain.
+
+    A gradient norm is a finite, non-negative real. A NaN or Inf is not a
+    missing value: it is a positive statement that the backward pass produced a
+    non-finite gradient, which the optimizer then applied to the weights.
+
+    Every other gradient check in this file reads `valid_gns`, which filters
+    non-finite values out. When they are ALL non-finite that list is empty, and
+    those checks skip themselves with "no finite gradient norms in the log" -
+    so the worse the corruption, the quieter trainproof became. coverage.py
+    already drew this exact distinction for the skip *state* (see its note on
+    the word "finite"); this check is the missing finding to go with it.
+    """
+    if not ctx.grad_norms:
+        ctx.no("grad-finite", "no grad_norm column in the log")
+        return []
+
+    ctx.ok("grad-finite")
+    bad = [
+        s for s, g in zip(ctx.grad_steps, ctx.grad_norms, strict=False)
+        if math.isnan(g) or math.isinf(g)
+    ]
+    if not bad:
+        return []
+
+    total = len(ctx.grad_norms)
+    every = len(bad) == total
+    return [{
+        "id": "TP-NAN-GRAD",
+        "level": "FAIL",
+        "message": "Gradient norm is NaN or Inf - non-finite gradients reached the optimizer.",
+        "evidence": (
+            f"{len(bad)} of {total} logged gradient norms are non-finite"
+            f"{' (every one)' if every else ''}; first at step {bad[0]:g}. "
+            "Weights updated with a non-finite gradient are non-finite from that "
+            "step on. A common cause is fp16 weights trained without a loss "
+            "scaler (torch_dtype=float16 with fp16=False in TrainingArguments). "
+            "Note that the loss column can still look clean: "
+            "TrainingArguments.logging_nan_inf_filter defaults to True and "
+            "substitutes an average for a NaN loss before it is ever logged."
+        ),
+    }]
+
+
+def _zero_tail_onset(values: list[float]) -> int | None:
+    """Index at which an exactly-zero tail begins, or None.
+
+    Returns None when the series is entirely zero - TP-ZERO-LOSS owns that
+    case - and None when nothing before the tail was positive, because then
+    there is no live-then-dead transition to report.
+    """
+    if not values:
+        return None
+    i = len(values)
+    while i > 0 and values[i - 1] == 0.0:
+        i -= 1
+    if i == 0 or i == len(values):
+        return None
+    if any(v > 0.0 for v in values[:i]):
+        return i
+    return None
+
+
 def check_zero_loss(ctx: CheckContext) -> list[dict]:
     if len(ctx.valid_losses) >= rules.MIN_POINTS_FOR_DEGENERATE_CHECK:
         ctx.ok("zero-loss")
@@ -128,6 +227,25 @@ def check_zero_loss(ctx: CheckContext) -> list[dict]:
                     "returns 0.0 when every target label is masked to -100, so check the "
                     "collator's prompt masking and whether the response was truncated out "
                     "of the context window."
+                ),
+            }]
+
+        onset = _zero_tail_onset(ctx.valid_losses)
+        if onset is not None and len(ctx.valid_losses) - onset >= rules.MIN_ZERO_TAIL_FOR_ONSET:
+            tail = len(ctx.valid_losses) - onset
+            return [{
+                "id": "TP-ZERO-LOSS-ONSET",
+                "level": "FAIL",
+                "message": "Loss was positive and then became exactly zero for the rest of the run - the run died partway through.",
+                "evidence": (
+                    f"last positive loss {ctx.valid_losses[onset - 1]:.4f}, then {tail} "
+                    "consecutive losses of exactly 0.0. Exact zero is a structural "
+                    "signature, not convergence - a converging loss approaches zero "
+                    "without reaching it. Every ratio-shaped rule reads this collapse "
+                    "as a large improvement, which is why it is caught by equality "
+                    "instead. Check the gradient norms: if they are non-finite, the "
+                    "zeros are TrainingArguments.logging_nan_inf_filter (default True) "
+                    "substituting an average for a NaN loss."
                 ),
             }]
     else:
@@ -333,6 +451,7 @@ def check_gpu_util(ctx: CheckContext) -> list[dict]:
 
 CHECK_REGISTRY = [
     check_nan,
+    check_nan_grad,
     check_zero_loss,
     check_flat_loss,
     check_divergence,

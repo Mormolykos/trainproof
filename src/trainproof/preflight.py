@@ -75,11 +75,44 @@ def check_tokenizer(tokenizer):
     if not has_pad:
         findings.append({"id": "TP-PRE-MISSING-PAD-TOKEN", "level": "WARN", "message": "tokenizer has no pad_token", "evidence": ""})
         
+    shares_id = False
     if has_eos and has_pad:
         eos_id = getattr(tokenizer, "eos_token_id", None)
         pad_id = getattr(tokenizer, "pad_token_id", None)
         if eos_id is not None and pad_id is not None and eos_id == pad_id:
+            shares_id = True
             findings.append({"id": "TP-PRE-PAD-EQUALS-EOS", "level": "WARN", "message": "pad_token_id equals eos_token_id", "evidence": f"Shared ID: {eos_id}"})
+
+    # Having an eos_token is not the same as putting one in the sequence.
+    #
+    # The domain of `add_eos_token` is bool. Most tokenizer families do not
+    # define the attribute at all, and many pipelines append the EOS themselves
+    # in the text or the collator - so anything other than a literal False is
+    # UNKNOWN and reports nothing. Absence never becomes a finding here.
+    #
+    # WARN and deliberately not FAIL: trainproof cannot see the caller's
+    # preprocessing, and a false FAIL under a stop-on-fail policy aborts a
+    # correct run before step 1, which is the worst thing this library can do.
+    if has_eos and getattr(tokenizer, "add_eos_token", None) is False:
+        evidence = (
+            "tokenizer has eos_token "
+            f"{getattr(tokenizer, 'eos_token', '')!r} but add_eos_token is False, "
+            "so encoding appends no EOS. Unless the caller adds one explicitly, "
+            "no sequence carries a stop target and the model is never taught to "
+            "end."
+        )
+        if shares_id:
+            evidence += (
+                " pad_token_id == eos_token_id here, so an EOS and a pad are the "
+                "same integer: a collator that masks padding masks a genuine EOS "
+                "with it, and no inspection of input_ids can tell them apart."
+            )
+        findings.append({
+            "id": "TP-PRE-NO-EOS-APPEND",
+            "level": "WARN",
+            "message": "Tokenizer will not append eos_token - sequences may carry no stop target.",
+            "evidence": evidence,
+        })
             
     has_bos = getattr(tokenizer, "bos_token", None) is not None
     if has_bos:
