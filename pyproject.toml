@@ -40,7 +40,15 @@ build-backend = "setuptools.build_meta"
 [tool.ruff]
 target-version = "py310"
 line-length = 120
-extend-exclude = ["build", "dist", ".venv", "recon"]
+extend-exclude = [
+    "build", "dist", ".venv", "recon",
+    # Preserved verbatim, byte-for-byte, with its SHA-256 in that directory's
+    # SHA256SUMS.txt. Its defects ARE the evidence for TP-NAN-GRAD and
+    # TP-ZERO-LOSS-ONSET, so linting it would ask us to edit a file whose whole
+    # value depends on never being edited. Excluded rather than ignored per-rule
+    # so no future rule addition reopens the same argument.
+    "evidence/web_chat_tinyllama_apr2025",
+]
 
 # The ruleset is chosen, not inherited. Running ruff with its defaults reports
 # 103 findings here, and adopting all of them would make this codebase worse:
