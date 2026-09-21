@@ -206,6 +206,13 @@ def _run():
         report_dict = check_data(args.input)
     elif args.command == "tokenizer":
         report_dict = check_tokenizer(args.model, args.transcripts)
+
+        # S-1: a missing optional dependency means trainproof could not run the
+        # check -- it is not a verdict on the user's tokenizer. Same policy and
+        # same exit code as `preflight --tokenizer` below, and the same shape as
+        # the TP-NO-RECORDS handling in `epoch`.
+        if any(f.get("id") == "TP-TOK-SPM-MISSING" for f in report_dict.get("findings", [])):
+            fail_to_run("pip install sentencepiece is required to lint a SentencePiece tokenizer")
     elif args.command == "epoch":
         try:
             report_dict = check_epoch(args.logfile, fmt=args.format, mapping_overrides=mapping_overrides)
@@ -432,7 +439,8 @@ def _run():
         except Exception as e:
             fail_to_run(f"could not compare against {args.baseline}: {e}")
     elif args.command == "watch":
-        watch_loop(args.logfile, interval=args.interval, fmt=args.format, until_fail=args.until_fail, stall_timeout=args.stall_timeout)
+        watch_loop(args.logfile, interval=args.interval, fmt=args.format, until_fail=args.until_fail,
+                   stall_timeout=args.stall_timeout, mapping_overrides=mapping_overrides)
         sys.exit(0)
     elif args.command == "preflight":
         from .preflight import preflight

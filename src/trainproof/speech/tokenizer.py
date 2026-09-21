@@ -12,9 +12,16 @@ def load_tokenizer(model_path: str):
     try:
         import sentencepiece as spm
     except ImportError:
-        return None, {"id": "TP-TOK-SPM-MISSING", "level": "FAIL",
-                      "message": "sentencepiece is not installed - cannot lint this tokenizer.",
-                      "evidence": "pip install sentencepiece"}
+        # LEVEL CORRECTED 2026-09-21 (S-1). This was FAIL, which made the
+        # aggregate verdict FAIL and the process exit 1 -- a user-facing verdict
+        # against their tokenizer, emitted because trainproof was missing one of
+        # its own optional packages. cli.py already implements the opposite
+        # policy for `transformers` ("a missing dependency is trainproof's
+        # problem, not a verdict on the user's dataset") and exits 2 there. This
+        # makes the two paths agree. NOT-CHECKED already maps to exit 2.
+        return None, {"id": "TP-TOK-SPM-MISSING", "level": "NOT-CHECKED",
+                      "message": "sentencepiece is not installed - trainproof cannot lint this tokenizer.",
+                      "evidence": "pip install sentencepiece. This is a missing trainproof dependency, not a finding about the tokenizer."}
     try:
         sp = spm.SentencePieceProcessor()
         sp.load(model_path)
@@ -27,7 +34,10 @@ def load_tokenizer(model_path: str):
 def check_tokenizer(model_path: str | Path, transcripts_path: str | Path) -> dict[str, Any]:
     tokenizer, load_error = load_tokenizer(str(model_path))
     if load_error is not None:
-        return {"verdict": "FAIL", "findings": [load_error]}
+        # S-1: a missing dependency is a checker outcome, not a verdict on the
+        # artifact. A genuinely unreadable model file (TP-TOK-LOAD-FAIL) stays FAIL.
+        verdict = "NOT-CHECKED" if load_error["level"] == "NOT-CHECKED" else "FAIL"
+        return {"verdict": verdict, "findings": [load_error]}
     findings = []
     verdict = "PASS"
     
@@ -37,7 +47,6 @@ def check_tokenizer(model_path: str | Path, transcripts_path: str | Path) -> dic
         
     lines = path.read_text(encoding="utf-8").splitlines()
     total_tokens = 0
-    total_chars = 0
     total_unks = 0
     n_scored = 0
 
@@ -77,7 +86,6 @@ def check_tokenizer(model_path: str | Path, transcripts_path: str | Path) -> dic
         pieces = tokenizer.encode_as_pieces(text)
         n_scored += 1
         total_tokens += len(pieces)
-        total_chars += len(text)
         total_unks += sum(1 for p in pieces if p == "<unk>")
         if duration is not None and duration > 0:
             n_timed += 1
@@ -114,7 +122,15 @@ def check_tokenizer(model_path: str | Path, transcripts_path: str | Path) -> dic
 
     coverage = 1.0 - oov_rate
     if coverage < rules.MIN_VOCAB_COVERAGE:
-        findings.append({"id": "TP-TOK-LOW-COVERAGE", "level": "WARN", "message": "Vocabulary coverage is below recommended threshold.", "evidence": f"{coverage*100:.3f}% < {rules.MIN_VOCAB_COVERAGE*100:.3f}%"})
+        # NAME CORRECTED 2026-09-21 (P-10). This is 1 - (unknown-piece rate), a
+        # token-frequency statistic. It is NOT vocabulary/type coverage: a corpus
+        # dominated by one known token scores near 100% while many corpus types
+        # are unknown. MIN_VOCAB_COVERAGE and MAX_OOV_RATE are exact complements,
+        # so this rule fires on identically the same condition as TP-TOK-HIGH-OOV
+        # -- one measurement reported as two findings. Collapsing the two rules
+        # changes the emitted rule set and is deferred to vNext; the wording is
+        # corrected here so the number is not read as something it is not.
+        findings.append({"id": "TP-TOK-LOW-COVERAGE", "level": "WARN", "message": "Known-token rate is below recommended threshold (this is 1 - OOV token rate, not vocabulary/type coverage).", "evidence": f"{coverage*100:.3f}% < {rules.MIN_VOCAB_COVERAGE*100:.3f}%"})
         if verdict == "PASS": verdict = "WARN"
 
     if n_timed == 0:

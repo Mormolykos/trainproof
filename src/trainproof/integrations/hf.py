@@ -214,7 +214,7 @@ class TrainproofCallback(TrainerCallback):
     """
 
     def __init__(self, policy="warn", check_every=25, min_points=10,
-                 objective_check=True, objective_batches=32,
+                 objective_check=False, objective_batches=32,
                  num_classes=None, ignore_index=None, loss_shifts=None):
         if not _HAS_TRANSFORMERS:
             raise ImportError("pip install transformers is required to use TrainproofCallback")
@@ -230,6 +230,19 @@ class TrainproofCallback(TrainerCallback):
         # width, the ignore sentinel and the first batches of labels. Nothing about
         # the loss curve can substitute for them: a collision between the sentinel
         # and a real class leaves the curve identical to a healthy run.
+        #
+        # DEFAULT CHANGED TO FALSE 2026-09-21 (S-6). Reading "the first batches of
+        # labels" means creating a fresh iterator over the caller's training
+        # dataloader in on_train_begin. For a map-style loader with a random
+        # sampler that draws its permutation from a generator, doing so CHANGES THE
+        # BATCH ORDER of the run being observed. The existing guard covers only
+        # losing batches from a stream; it does not cover consuming randomness.
+        # README described this callback as one that "only observes", which was
+        # not true of the shipped default.
+        #
+        # Opting in with objective_check=True restores the previous behaviour,
+        # sampling included. The sampling itself is unchanged and remains a real
+        # interaction with the caller's input pipeline.
         self.objective_check = objective_check
         self.objective_batches = objective_batches
         self.num_classes = num_classes

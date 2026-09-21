@@ -17,10 +17,18 @@ bill — checks that run *before* training (is this run safe to start?), *during
 training (should it keep going?), and *after* (is it reproducible; did it match
 a known-good baseline?).
 
-**The one rule it never breaks:** trainproof does not infer causes, does not
-invent confidence scores, and does not guess. It reports deterministic findings
-backed by evidence, or it stays silent. Every feature earns its place by
-answering a single question — *if it were gone, would someone lose GPU hours?*
+**The one rule it never breaks:** trainproof does not invent confidence scores and
+does not judge a run with a model. Its rules are deterministic: the same log gives
+the same verdict. Every feature earns its place by answering a single question —
+*if it were gone, would someone lose GPU hours?*
+
+> **Correction (2026-09-21).** This paragraph used to read *"does not infer causes
+> … and does not guess."* Two independent audits found that several rule messages
+> do name a mechanism the log cannot establish — for example `TP-NAN-GRAD` states
+> that non-finite gradients *"reached the optimizer"*, which is false when a
+> `GradScaler` skips that step. **Those messages are unchanged in this release**;
+> correcting them is architectural work. Read every finding's *evidence* string as
+> the measurement, and its *message* as an interpretation that may exceed it.
 
 ```bash
 pip install trainproof
@@ -110,22 +118,54 @@ TRAINPROOF VERDICT
 
 ## Why this exists
 
-A 9.8-hour XTTS fine-tune ended measurably worse than it had been three hours
-earlier, and nothing in the stack said a word. That run's Coqui Trainer log ships
-in this repo, so the verdict is reproducible instead of an anecdote:
+A long XTTS fine-tune's training loss stopped falling and drifted upward, and
+nothing in the stack said a word. That run's Coqui Trainer log ships in this repo,
+so the observation is reproducible instead of an anecdote:
 
 ```bash
 trainproof epoch examples/real_world/xtts_diverged/trainer_0_log.txt --format coqui
 ```
 
 **FAIL — diverging.** The loss reached its minimum at step 48,350, which is 66% of
-the way through, and the run ended 1.62x above it.
+the way through, and the log ends 1.62x above it.
 
-The trainer's own bookkeeping agrees, which is the part worth checking yourself:
-the last `BEST MODEL` line in that log is `best_model_49880.pth`, while the last
-checkpoint written is `checkpoint_70000.pth`. The weights worth keeping had existed
-for roughly 23,000 steps — about three hours of GPU time — before the run stopped.
-Coqui recorded it. Nothing in the stack was asking.
+### Correction (2026-09-21): this verdict rests on a truncated prefix
+
+Two independent forensic audits of this repository examined that claim. Both found
+it overstated, and the evidence is in this repository:
+
+`examples/real_world/xtts_diverged/trainer_0_log.txt` is a **prefix** of
+`evidence/xtts_coqui_feb2026/trainer_0_log.txt` — the same continuous run, cut at
+step 72,900 of 125,039. The two are identical over that range once line endings are
+normalised and the 14-line `<TTS>` path redaction recorded in that directory's
+`run_meta.json` is applied; no numeric value, timestamp or step differs between them.
+The continuation changes the picture:
+
+| | prefix (shown above) | the same run, complete |
+|---|---|---|
+| last `BEST MODEL` line | `best_model_49880.pth` | **`best_model_124700.pth`** — step 124,700 of 125,039 |
+| held-out `avg_loss` evaluations | 3, improving | **6, improving at every one** (4.8813 → 2.5894) |
+| epoch-aggregated training loss | — | ends at its own minimum (ratio **1.000**) |
+| per-micro-batch training loss | ends 1.62x above its minimum | ends 1.88x above its minimum |
+
+The earlier text on this page read *"ended measurably worse"* and cited
+`best_model_49880.pth` against `checkpoint_70000.pth` as corroboration. **The
+continuation supersedes that bookkeeping**: the trainer promoted a new best model
+at 99.7% of the run, and every retained held-out evaluation improved, including
+the last.
+
+What the retained evidence supports is narrower than the original claim: **the
+per-micro-batch training display loss ended above its own minimum.** That is a
+property of that series. It is not evidence that the model got worse — and the
+held-out series that bears on generalisation moved the other way.
+
+**This correction does not claim the opposite.** No audio, MOS or perceptual
+evaluation of this run is retained, so nothing here establishes that the model
+improved in quality either. Held-out *loss* improved; that is all that was measured.
+
+The underlying defect — that `TP-DIVERGE` reads one training series and cannot be
+overruled by an improving held-out series in the same file — is architectural and
+is **not** fixed in this release.
 
 ## The fault-injection gallery
 
@@ -184,7 +224,8 @@ trainproof data /path/to/dataset_or_manifest.jsonl
 trainproof tokenizer my_tokenizer.model transcripts.txt
 
 # 3. Training-run verdict: NaN/divergence/dead-run detection, gradient spikes,
-#    LR sanity, throughput — from log files, any framework
+#    LR sanity, throughput — from HF trainer_state.json, TensorBoard event files,
+#    Coqui trainer logs, JSONL or CSV. Other frameworks need --map or a matching column name.
 trainproof epoch logs/run.jsonl            # exit 1 on FAIL: CI-ready
 
 # 4. Compare runs against a baseline (v0.6: BASELINE FIRST, then one or more runs
@@ -291,6 +332,19 @@ trainproof watch logs/run.jsonl --interval 10 --until-fail --stall-timeout 300
 expect to fail. Aborting is strictly opt-in via `policy="stop_on_fail"`, the one
 mode that takes an irreversible action. trainproof does not make that decision
 for you unless you ask.
+
+> **Correction (2026-09-21).** *"Only observes"* was not true of the shipped
+> default. `objective_check` defaulted to `True`, and at `on_train_begin` the
+> callback created a fresh iterator over your training dataloader to sample
+> targets. A map-style loader with a random sampler draws its permutation from a
+> generator, so **creating that iterator could change your batch order** — a
+> measurement tool altering the experiment it observes.
+>
+> **As of this release `objective_check` defaults to `False`.** The default
+> callback now touches no dataloader. Passing `objective_check=True` re-enables
+> the objective checks *and* the sampling, which remains a real interaction with
+> your input pipeline — opt in deliberately. Streaming/iterable dataloaders were
+> already refused and still are.
 
 The guardian applies the same deterministic rules as `trainproof epoch`, so it
 inherits their documented single-run limitations.
@@ -423,8 +477,8 @@ Everything below runs on a laptop and in CI from the same definition.
 
 ```bash
 pip install -e ".[dev]"            # ruff, mypy, pytest, build, twine, pyyaml
-pytest -q                          # 270 collected; the dataset tests skip
-pip install -e ".[dev,speech]"     # 274, nothing skipped
+pytest -q                          # the dataset tests skip without the speech extra
+pip install -e ".[dev,speech]"     # the speech tests stop skipping, and none may skip
 ```
 
 **Run the whole CI workflow locally before pushing:**

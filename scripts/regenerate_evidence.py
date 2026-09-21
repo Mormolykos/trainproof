@@ -104,8 +104,16 @@ def evidence_rows() -> list[dict]:
 
 
 def cell(report: dict) -> str:
-    ids = ", ".join(f"`{i}`" for i in sorted(f["id"] for f in report["findings"]))
-    return f"**{report['verdict']}**<br>{ids or '(none)'}"
+    # INFO findings are marked. Listing them beside the rules that produced the
+    # verdict reads as several grounds for it; the 2026-09-21 audits found the
+    # XTTS FAIL cell -- `TP-DIVERGE`, `TP-THROUGHPUT` -- read that way, when
+    # TP-THROUGHPUT is INFO and cannot contribute to any verdict. The verdict
+    # itself is unchanged; only which findings support it is now visible.
+    parts = []
+    for f in sorted(report["findings"], key=lambda f: f["id"]):
+        mark = " *(INFO)*" if f.get("level") == "INFO" else ""
+        parts.append(f"`{f['id']}`{mark}")
+    return f"**{report['verdict']}**<br>{', '.join(parts) or '(none)'}"
 
 
 def rules_of(report: dict) -> set[str]:
@@ -189,7 +197,8 @@ def build() -> str:
             "",
             "Training runs nobody wrote for trainproof, judged by the shipped rules.",
             "The logs are in `evidence/`. Both XTTS rows are the *same run* read by two",
-            "independent parsers -- a text log and a binary event file.",
+            "parsers -- a text log and a binary event file. They are two readers of one",
+            "logging process, not two independent measurements of the run.",
             "",
             "| framework | log | format | records | steps | verdict |",
             "|---|---|---|---|---|---|",
@@ -203,9 +212,19 @@ def build() -> str:
     # ---- derived observations: computed, not asserted -------------------------
     obs = []
 
-    # Two readers, one run: if the text log and the event file of the same XTTS
-    # fine-tune disagree, one of the parsers is wrong and the table above is
-    # worthless. Checked here rather than asserted in prose.
+    # Two readers, one run. This used to be emitted as "two independent readers
+    # agree exactly", and presented as corroboration. The 2026-09-21 forensic
+    # audits established that it is neither:
+    #
+    #   * NOT INDEPENDENT. They read one logging process. Worse, on the XTTS run
+    #     the `coqui` reader drops the six eval sections the text log contains
+    #     (`avg_loss` is absent from CANONICAL_ALIASES) while the `tfevents`
+    #     reader keeps them. Agreement between a sighted reader and a blind one
+    #     is not corroboration.
+    #   * NOT EXACT. The verdict and rule set match; coverage does not.
+    #
+    # So compare coverage too, and report what actually matched instead of
+    # asserting a conclusion the comparison does not support.
     by_file = {}
     for r in ev:
         by_file.setdefault(r["framework"], []).append(r)
@@ -215,10 +234,23 @@ def build() -> str:
         rulesets = {frozenset(r["rules"]) for r in rows}
         verdicts = {r["report"]["verdict"] for r in rows}
         fmts = ", ".join(f"`{r['fmt']}`" for r in rows)
+        covs = [r["report"].get("checks", {}).get("coverage", {}) for r in rows]
+        cov_txt = ", ".join(
+            f"`{r['fmt']}` {c.get('checked', '?')}/{c.get('total', '?')}"
+            for r, c in zip(rows, covs, strict=False)
+        )
+        cov_same = len({(c.get("checked"), c.get("total")) for c in covs}) == 1
         if len(rulesets) == 1 and len(verdicts) == 1:
             obs.append(
-                f"{framework}: {fmts} are two independent readers of one run and they "
-                f"agree exactly -- same verdict, same rule set."
+                f"{framework}: {fmts} are two readers of one logging process. They "
+                f"reach the same verdict and the same rule set"
+                + (
+                    f", and examine the same amount of the run ({cov_txt})."
+                    if cov_same
+                    else f", but examine **different amounts of the run** ({cov_txt}) -- "
+                    "so this is agreement between readers with different visibility, "
+                    "not independent corroboration."
+                )
             )
         else:
             obs.append(

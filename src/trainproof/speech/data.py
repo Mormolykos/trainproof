@@ -28,6 +28,20 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
     verdict = "PASS"
     
     records = []
+    # S-4 (2026-09-21): a relative `audio_filepath` used to be resolved against
+    # the process working directory, so a valid manifest run from anywhere other
+    # than its own folder reported every file as TP-DATA-MISSING-AUDIO -- a FAIL
+    # about the user's data caused by where trainproof happened to be invoked.
+    # Manifest-relative is the universal convention. Absolute paths are untouched.
+    #
+    # REGRESSION FIX (2026-09-21, final audit): this rebasing applies ONLY to paths
+    # read out of a manifest. The directory branch below builds its records from
+    # `rglob`, whose results already carry `path` as their prefix; rebasing those
+    # prepended it a second time, so `trainproof data corpus` looked for
+    # `corpus/corpus/a.wav` and FAILed a valid corpus. Absolute inputs were exempt
+    # from rebasing and so kept working, which is why this hid behind tests that
+    # all used absolute tmp_path inputs. `None` means "nothing to rebase against".
+    manifest_dir = path.parent if path.is_file() else None
     if path.is_file() and path.suffix == ".jsonl":
         for line in path.read_text(encoding="utf-8").splitlines():
             if not line.strip(): continue
@@ -46,7 +60,6 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
     # Audio corpus stats
     sample_rates = set()
     channels = set()
-    bit_depths = set()
     audio_hashes = {}
     duplicates = 0
     durations = []
@@ -65,6 +78,8 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
     
     for r in records:
         audio_file = Path(r.get("audio_filepath", r.get("audio", "")))
+        if manifest_dir is not None and str(audio_file) not in ("", ".") and not audio_file.is_absolute():
+            audio_file = manifest_dir / audio_file
         text = r.get("text", r.get("transcript", ""))
         
         # Transcript checks
@@ -100,7 +115,6 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
                 info = sf.info(str(audio_file))
                 sample_rates.add(info.samplerate)
                 channels.add(info.channels)
-                bit_depths.add(info.subtype)
                 duration = info.frames / info.samplerate
                 durations.append(duration)
                 if text and duration > 0:
@@ -173,7 +187,7 @@ def check_data(input_path: str | Path) -> dict[str, Any]:
                 if verdict == "PASS": verdict = "WARN"
 
     if duplicates > 0:
-        findings.append({"id": "TP-DATA-DUPLICATES", "level": "WARN", "message": "Duplicate audio content detected.", "evidence": f"{duplicates} files have identical hashes."})
+        findings.append({"id": "TP-DATA-DUPLICATES", "level": "WARN", "message": "Byte-identical audio files detected.", "evidence": f"{duplicates} files have identical MD5 hashes. This is byte identity, not perceptual duplication: the same recording saved at a different bit depth or with a different header will not match."})
         if verdict == "PASS": verdict = "WARN"
 
     if clipping_count > 0:

@@ -77,15 +77,19 @@ These rules validate speech/TTS datasets (via `trainproof data`).
 | `TP-DATA-MISSING-AUDIO` | FAIL | The manifest references audio files that do not exist. |
 | `TP-DATA-UNREADABLE-AUDIO` | WARN | Audio files could not be decoded. |
 | `TP-DATA-EMPTY-TRANSCRIPT` | WARN | Transcripts are empty. |
-| `TP-DATA-DURATION-LONG` | WARN | Audio duration exceeds the maximum limit (default 30s). |
+| `TP-DATA-DURATION-LONG` | WARN | Audio duration exceeds the maximum limit (default 25s). |
 | `TP-DATA-DURATION-SHORT` | WARN | Audio duration is below the minimum limit (default 0.5s). |
 | `TP-DATA-CHAR-RATE-OUTLIER` | WARN | A transcript length vs audio duration outlier was detected. |
 | `TP-DATA-DUPLICATES` | WARN | Duplicate audio content (identical hashes) detected. |
 | `TP-DATA-CLIPPING` | WARN | Audio clipping detected. |
-| `TP-DATA-SILENCE` | WARN | Excessive silence detected at the start or end. |
+| `TP-DATA-SILENCE` | WARN | A continuous silent run anywhere in the file exceeds the limit (default 2.0s). |
 | `TP-DATA-UNNORMALIZED` | WARN | Unnormalized text detected (e.g. digits or dates instead of spoken words). |
 | `TP-DATA-MIXED-SCRIPTS` | WARN | Transcripts contain mixed character scripts. |
 | `TP-DATA-PASS` | PASS | The dataset preflight completed successfully. |
+
+**Manifest path resolution.** Relative artifact paths in a manifest are resolved relative to
+the manifest file's directory; absolute paths are unchanged. `TP-DATA-MISSING-AUDIO`
+therefore reports the same result wherever `trainproof data` is invoked from.
 
 ## Tokenizer Preflight Rules
 
@@ -93,11 +97,11 @@ These rules validate tokenizers and datasets (via `trainproof tokenizer` or `tra
 
 | ID | Default Level | Description |
 |---|---|---|
-| `TP-TOK-SPM-MISSING` | FAIL | The `sentencepiece` module is required but not installed. |
+| `TP-TOK-SPM-MISSING` | NOT-CHECKED | The `sentencepiece` module is required but not installed, so trainproof could not lint the tokenizer. This is a missing trainproof dependency, not a finding about your tokenizer: the command exits `2`, never `1`. |
 | `TP-TOK-LOAD-FAIL` | FAIL | Failed to load the tokenizer model. |
 | `TP-TOK-NO-TRANSCRIPTS` | FAIL | Transcripts file not found. |
-| `TP-TOK-HIGH-OOV` | FAIL | High Out-Of-Vocabulary rate detected (>1%). |
-| `TP-TOK-LOW-COVERAGE` | WARN | Vocabulary coverage is below the recommended threshold (<99%). |
+| `TP-TOK-HIGH-OOV` | FAIL | High Out-Of-Vocabulary token rate detected (>0.1%). |
+| `TP-TOK-LOW-COVERAGE` | WARN | Known-token rate is below the recommended threshold (<99.9%). This is `1 - OOV token rate`, not vocabulary/type coverage, and it fires on exactly the same condition as `TP-TOK-HIGH-OOV`. |
 | `TP-TOK-HIGH-TPS` | WARN | High tokens per second of audio (possible sequence length blowout). Measured over the lines that declare a duration, on both sides of the rate. |
 | `TP-TOK-TPS-NOT-MEASURED` | NOT-CHECKED | No line declared a duration, so tokens per second was not measured. Reported rather than skipped in silence. |
 | `TP-TOK-NOT-MEASURED` | NOT-CHECKED | No tokens were produced, so OOV and vocabulary coverage were not measured. An empty file previously scored 100% coverage. |
@@ -112,7 +116,7 @@ These rules validate tokenizers and datasets (via `trainproof tokenizer` or `tra
 | `TP-PRE-BOS-TOKEN-INFO` | INFO | Status of the `bos_token`. |
 | `TP-PRE-CONTEXT-CHECK-SKIPPED`| INFO | Context length check skipped (missing `--max-len`). |
 | `TP-PRE-CONTEXT-OVERFLOW` | WARN | Records exceed the maximum context length. |
-| `TP-PRE-MALFORMED-JSONL` | FAIL | JSONL parsing failed for some lines. |
+| `TP-PRE-MALFORMED-JSONL` | FAIL | Some lines could not be read as records: either not valid JSON, or valid JSON that decodes to something other than an object. The evidence says which. |
 | `TP-PRE-OK` | PASS | The preflight checks passed. |
 
 ## Objective Rules

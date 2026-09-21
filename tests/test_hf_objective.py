@@ -38,6 +38,14 @@ class MockModel:
 
 
 def run_begin(model, loader=None, policy="warn", **kw):
+    # objective_check is passed EXPLICITLY here. It defaulted to True until
+    # 2026-09-21, when the default became False: the objective path creates a
+    # fresh iterator over the training dataloader at on_train_begin, which can
+    # consume a random sampler's generator state and change the caller's batch
+    # order. Every test in this file is about what the objective checks DO once
+    # requested, so requesting them is now a precondition of the test rather
+    # than an inherited default. No assertion below is weakened.
+    kw.setdefault("objective_check", True)
     cb = TrainproofCallback(policy=policy, **kw)
     control = MockControl()
     cb.on_train_begin(None, None, control, model=model, train_dataloader=loader)

@@ -8,6 +8,107 @@ All notable changes to trainproof are documented here. Format follows
 
 Nothing yet.
 
+## [0.22.0] — 2026-09-21 — what two forensic audits found
+
+Two independent forensic audits of this repository (one blind, then reconciled)
+examined all 98 diagnostic IDs and re-derived the headline evidence cases from the
+raw artifacts. This entry carries the repairs judged safe for v0.x: those that
+**remove** a claim trainproof could not support, or make an advertised behaviour
+real. Defects requiring semantic evidence representation, contradiction handling or
+calibration are deferred to vNext and are **not** fixed here.
+
+### Changed
+
+- **Breaking — `TP-TOK-SPM-MISSING` exit code.** A missing `sentencepiece` install
+  reported a FAIL verdict and exit `1`. The finding is now level `NOT-CHECKED` and
+  `trainproof tokenizer` exits `2`, printing no rule ID. This closes a deviation from
+  the exit-code table in `CONTRACTS.md`, which has listed "missing optional
+  dependency" under `2` since the 0.10.0 breaking change; the tokenizer path was
+  never migrated. **FAIL must mean a verdict about your run, never "trainproof had a
+  problem."** CI treating any non-zero as failure is unaffected; anything
+  distinguishing `1` from `2` on this path should be reviewed.
+- **Breaking — `TrainproofCallback(objective_check=)` now defaults to `False`.** The
+  objective checks read the first batches of labels, which means creating a fresh
+  iterator over your training dataloader at `on_train_begin`. For a map-style loader
+  with a random sampler that draws its permutation from a generator, that **can
+  change the batch order of the run being observed**. The README described this
+  callback as one that "only observes", which was not true of the shipped default.
+  Passing `objective_check=True` restores the previous behaviour, sampling included —
+  opt in deliberately. Streaming/iterable dataloaders were already refused.
+
+### Fixed
+
+- **Manifest-relative audio paths.** `trainproof data` resolved a relative
+  `audio_filepath` against the process working directory, so a valid manifest linted
+  from anywhere other than its own folder reported every clip as
+  `TP-DATA-MISSING-AUDIO` — a FAIL about your data caused by where trainproof was
+  invoked. Relative paths now resolve against the manifest's directory, the universal
+  convention; absolute paths are unchanged. This can only remove false failures. The
+  contract is stated in `RULES.md`.
+- **`watch --map` was accepted and ignored.** The flag was registered and parsed by
+  the CLI, then never passed to `watch_loop`, so live monitoring silently linted
+  against default column names. It is now threaded through.
+- **`preflight` crashed on valid JSONL that is not an object.** A line such as `123`,
+  `null` or `[1,2]` parses as JSON, reached `field in record`, and raised `TypeError`
+  out of `preflight` — where this contract promises a verdict or a documented exit.
+  Such a line is now counted as a malformed record, a state the loader already had.
+  How a *present* non-string value is judged is unchanged and deferred.
+- **`TP-ZERO-LR` / `TP-ZERO-LR-PARTIAL` evidence was false about the artifact.** The
+  predicate is `lr <= 0`, so negative learning rates are counted, but the evidence
+  read `"100.0% of steps have lr=0"` for a series where every value was `-1e-4`. The
+  evidence now states the predicate actually applied and how many values were
+  negative rather than zero. **The predicate is unchanged** — narrowing it would alter
+  which runs FAIL and needs calibration first.
+- **`TP-TOK-LOW-COVERAGE` was named for something it does not measure.** It reports
+  `1 - (unknown-piece rate)`, a token-frequency statistic, not vocabulary or type
+  coverage: a corpus dominated by one known token scores near 100% while many corpus
+  types are unknown. Reworded to "known-token rate". It still fires on exactly the
+  same condition as `TP-TOK-HIGH-OOV`; collapsing the two rules changes the emitted
+  rule set and is deferred.
+- **`TP-DATA-DUPLICATES` implied perceptual duplication.** It compares MD5 hashes, so
+  it finds byte-identical files only — the same recording saved at a different bit
+  depth or with a different header will not match. The message and evidence now say so.
+- Dead accumulators (`bit_depths`, `total_chars`) computed and never read.
+
+### Documentation
+
+Corrections to published claims that the audits found unsupported. No behaviour
+change; these correct the public record.
+
+- **The XTTS case in `README.md` and `examples/real_world/`.** The shipped example log
+  is a **prefix** of the full run retained in `evidence/xtts_coqui_feb2026/`, truncated
+  at step 72,900 of 125,039 — identical over that range after line-ending
+  normalisation and the 14-line `<TTS>` path redaction that `run_meta.json` has always
+  recorded. In the complete run the trainer promoted `best_model_124700.pth` at 99.7%
+  of the run and all six retained held-out `avg_loss` evaluations improve, including
+  the last (4.8813 → 2.5894). The earlier "ended measurably worse" reading, and the
+  `best_model_49880.pth` vs `checkpoint_70000.pth` corroboration, were computed from
+  the prefix and are not supported by the full evidence. No audio or perceptual
+  evaluation is retained, so the opposite is not established either.
+- **`TP-DIVERGE` still FAILs that run.** It reads one training series and cannot be
+  overruled by an improving held-out series in the same file. This is **unchanged v0.x
+  behaviour and a known architectural limitation**, not a repaired diagnostic, and it
+  is documented rather than silently patched.
+- **"does not infer causes … does not guess"** removed from the README's headline rule.
+  Several rule messages do name a mechanism the log cannot establish — `TP-NAN-GRAD`
+  states that non-finite gradients "reached the optimizer", which is false when a
+  `GradScaler` skips the step. Those messages are unchanged here; read a finding's
+  *evidence* as the measurement and its *message* as an interpretation that may exceed it.
+- **`EVIDENCE_MATRIX.md`** no longer calls the two XTTS rows "independent readers
+  agreeing exactly". They read one logging process with different visibility, and the
+  matrix now reports the coverage each achieved. `TP-THROUGHPUT` is marked INFO so it
+  no longer reads as grounds for a verdict it cannot contribute to.
+- **`evidence/ckpt_fixtures/`** no longer describes `oracle.json` as the reference for
+  a checkpoint parser that does not exist. The shipped `check_checkpoint` reads the ZIP
+  directory only and returns PASS for all seven fixtures, the pathological ones
+  included. The fixtures are kept as the specification for vNext work.
+- **`RULES.md`** records the manifest path-resolution contract, the corrected
+  `TP-TOK-SPM-MISSING` level, and corrected thresholds for `TP-DATA-DURATION-LONG`,
+  `TP-DATA-SILENCE` and `TP-TOK-HIGH-OOV`.
+- The README no longer hard-codes a collected-test count. It was wrong in successive
+  releases, and `pytest -q` and `pytest --collect-only -q` do not report the same
+  total. The authoritative per-release count lives in the golden record's `test_count`.
+
 ## [0.21.0] — 2026-09-13 — the run trainproof passed
 
 ### Added

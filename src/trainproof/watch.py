@@ -9,9 +9,10 @@ from .epoch import check_records
 from .report import print_verdict_console
 
 
-def poll_once(path: str | Path, fmt: str, prev_verdict: str | None) -> tuple[str | None, bool, int]:
+def poll_once(path: str | Path, fmt: str, prev_verdict: str | None,
+              mapping_overrides: dict[str, str] | None = None) -> tuple[str | None, bool, int]:
     try:
-        records = parse_log_with_format(path, fmt)
+        records = parse_log_with_format(path, fmt, mapping_overrides)
     except Exception:
         records = []
         
@@ -41,7 +42,11 @@ def poll_once(path: str | Path, fmt: str, prev_verdict: str | None) -> tuple[str
         
     return (verdict, changed, n_records)
 
-def watch_loop(path: str | Path, interval: int = 10, fmt: str = "auto", until_fail: bool = False, stall_timeout: int = 300):
+# S-2 (2026-09-21): `watch --map` was registered and parsed by the CLI and then
+# dropped -- watch_loop took no mapping_overrides, so live monitoring silently
+# ignored the column mapping the user asked for. Threaded through now.
+def watch_loop(path: str | Path, interval: int = 10, fmt: str = "auto", until_fail: bool = False,
+               stall_timeout: int = 300, mapping_overrides: dict[str, str] | None = None):
     prev_verdict = None
     last_size = -1
     last_change_time = time.monotonic()
@@ -65,7 +70,7 @@ def watch_loop(path: str | Path, interval: int = 10, fmt: str = "auto", until_fa
                     print_verdict_console("WARN", [{"id": "TP-STALL", "level": "WARN", "message": f"No log growth for {stall_timeout}s - training may be stalled.", "evidence": ""}])
                     stall_warned = True
 
-            verdict, _changed, _n = poll_once(path, fmt, prev_verdict)
+            verdict, _changed, _n = poll_once(path, fmt, prev_verdict, mapping_overrides)
             if verdict is not None:
                 prev_verdict = verdict
             

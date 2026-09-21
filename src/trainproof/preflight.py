@@ -27,12 +27,35 @@ def load_jsonl(path):
             if not line:
                 continue
             try:
-                records.append(json.loads(line))
+                value = json.loads(line)
             except json.JSONDecodeError:
                 malformed.append((i, line))
+                continue
+            # S-5 (2026-09-21): `123`, `null` and `[1,2]` are valid JSON and not
+            # records. They used to be appended and then reached `field in record`
+            # in _extract_text, raising TypeError out of preflight -- where
+            # CONTRACTS.md promises a verdict or a documented exit. A line that
+            # cannot be addressed by field name is malformed, which is a state
+            # this function already has.
+            if not isinstance(value, dict):
+                malformed.append((i, line))
+                continue
+            records.append(value)
     return records, malformed
 
 def _extract_text(record, text_field):
+    # S-5 (2026-09-21): a JSONL line that is valid JSON but not an object -- `123`,
+    # `null`, `[1,2]` -- reached `field in record` and raised TypeError out of
+    # preflight, where CONTRACTS.md promises a verdict or a documented exit. A
+    # record trainproof cannot address by field name is a malformed record, and
+    # load_jsonl already has a state for that.
+    #
+    # NOT CHANGED HERE: how a *present* non-string value is judged. `{"text": null}`
+    # still stringifies to "None" and passes the empty-text gate. That is a real
+    # defect (audit V2-34) and correcting it alters verdicts on real datasets, so
+    # it is deferred rather than folded into a crash fix.
+    if not isinstance(record, dict):
+        return ""
     if text_field:
         return str(record.get(text_field, ""))
     for field in ["text", "output", "content", "response", "completion"]:
@@ -146,11 +169,72 @@ def check_context_length(records, tokenizer, max_len, text_field):
         return [{"id": "TP-PRE-CONTEXT-OVERFLOW", "level": "WARN", "message": f"Records exceed max context length of {max_len}", "evidence": f"{overflows} records overflow. Largest token count: {max_found}"}]
     return []
 
+def _is_unparseable(text):
+    """True when this line is not valid JSON at all.
+
+    The complement -- valid JSON that decodes to something other than an object --
+    is a record-structure problem, not a parser problem, and the two must not be
+    reported with the same sentence.
+    """
+    try:
+        json.loads(text)
+    except (TypeError, ValueError):   # ValueError covers json.JSONDecodeError
+        return True
+    return False
+
+
+def _json_text(value):
+    """The JSON text of a non-record value, for uniform classification.
+
+    A value that will not serialise is rendered as a JSON string, which is still
+    valid JSON and still not an object -- the fact being recorded.
+    """
+    try:
+        return json.dumps(value)
+    except (TypeError, ValueError):
+        return json.dumps(str(value))
+
+
 def check_preflight(records, malformed=None, tokenizer=None, max_len=None, text_field=None):
     findings = []
-    
+
+    # S-5: preflight(<iterable>) bypasses load_jsonl, so non-record entries are
+    # separated here instead. Same outcome, same reason. The entry keeps the
+    # value's JSON text rather than a prose label, so the classification below
+    # reads the same way for both producers.
+    malformed = list(malformed or [])
+    non_records = [(i, r) for i, r in enumerate(records, start=1) if not isinstance(r, dict)]
+    if non_records:
+        records = [r for r in records if isinstance(r, dict)]
+        malformed += [(i, _json_text(r)) for i, r in non_records]
+
     if malformed:
-        findings.append({"id": "TP-PRE-MALFORMED-JSONL", "level": "FAIL", "message": "JSONL parsing failed.", "evidence": f"{len(malformed)} broken lines. First bad line number: {malformed[0][0]}"})
+        # WORDING CORRECTED 2026-09-21: this finding used to say "JSONL parsing
+        # failed." with evidence "N broken lines". For `123`, `null` or `[1,2]`
+        # that is false about the artifact -- json.loads SUCCEEDED; the value it
+        # returned is simply not a record. One ID still covers both classes, so
+        # the message states the condition they share and the evidence says which
+        # of the two was actually seen. No verdict, level or exit code changes.
+        bad_syntax, not_objects = [], []
+        for lineno, text in malformed:
+            (bad_syntax if _is_unparseable(text) else not_objects).append(lineno)
+        first = malformed[0][0]
+        if bad_syntax and not_objects:
+            evidence = (f"{len(malformed)} unusable lines: {len(bad_syntax)} not valid JSON, "
+                        f"{len(not_objects)} valid JSON but not an object. First at line {first}.")
+        elif not_objects:
+            n = len(not_objects)
+            subject = "1 line is" if n == 1 else f"{n} lines are"
+            carries = "it carries" if n == 1 else "they carry"
+            evidence = (f"{subject} valid JSON but not an object, so {carries} no fields to check. "
+                        f"First at line {first}.")
+        else:
+            n = len(bad_syntax)
+            subject = "1 line is" if n == 1 else f"{n} lines are"
+            evidence = f"{subject} not valid JSON. First at line {first}."
+        findings.append({"id": "TP-PRE-MALFORMED-JSONL", "level": "FAIL",
+                         "message": "JSONL lines could not be read as records.",
+                         "evidence": evidence})
         
     findings.extend(check_empty_rows(records, text_field))
     findings.extend(check_duplicates(records, text_field))

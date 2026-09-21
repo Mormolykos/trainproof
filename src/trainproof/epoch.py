@@ -352,12 +352,21 @@ def check_grad_spike(ctx: CheckContext) -> list[dict]:
 def check_lr(ctx: CheckContext) -> list[dict]:
     if ctx.lrs:
         ctx.ok("lr")
-        zeros = sum(1 for lr in ctx.lrs if lr <= 0)
+        # S-3 (2026-09-21): the predicate is `lr <= 0`, so negative learning
+        # rates are counted here too. The evidence string used to read
+        # "100.0% of steps have lr=0" for a series where every value was
+        # -1e-4 -- a sentence that is false about the artifact. The predicate
+        # is UNCHANGED (narrowing it would alter which runs FAIL, which needs
+        # calibration); only the description of what was measured is fixed.
+        nonpositive = [lr for lr in ctx.lrs if lr <= 0]
+        zeros = len(nonpositive)
         zero_frac = zeros / len(ctx.lrs)
+        n_negative = sum(1 for lr in nonpositive if lr < 0)
+        _neg = f" ({n_negative} of them negative, not zero)" if n_negative else ""
         if zero_frac >= rules.ZERO_LR_FAIL_FRACTION:
-            return [{"id": "TP-ZERO-LR", "level": "FAIL", "message": "Learning rate is zero for the entire run - the optimizer never steps.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"}]
+            return [{"id": "TP-ZERO-LR", "level": "FAIL", "message": "Learning rate is zero for the entire run - the optimizer never steps.", "evidence": f"{zero_frac*100:.1f}% of logged steps have lr <= 0{_neg}"}]
         elif zero_frac > rules.MAX_ZERO_LR_FRACTION:
-            return [{"id": "TP-ZERO-LR-PARTIAL", "level": "WARN", "message": "Learning rate is zero for a large fraction of the run.", "evidence": f"{zero_frac*100:.1f}% of steps have lr=0"}]
+            return [{"id": "TP-ZERO-LR-PARTIAL", "level": "WARN", "message": "Learning rate is zero for a large fraction of the run.", "evidence": f"{zero_frac*100:.1f}% of logged steps have lr <= 0{_neg}"}]
     else:
         ctx.no("lr", "no learning-rate column in the log")
     return []

@@ -10,6 +10,12 @@
   "wall_seconds": 35131,
   "best_model_recorded_by_trainer": "best_model_49880.pth",
   "last_checkpoint_written": "checkpoint_70000.pth",
+  "artifact_scope": "TRUNCATED PREFIX. Every field above is true of this file and of the first 72,900 steps of the run. It is not true of the run.",
+  "is_prefix_of": "evidence/xtts_coqui_feb2026/trainer_0_log.txt",
+  "full_run_final_step": 125039,
+  "full_run_best_model_recorded_by_trainer": "best_model_124700.pth",
+  "full_run_held_out_evaluations": "6 avg_loss evaluations, improving at every one (4.8813 -> 2.5894), including the last",
+  "correction_2026_09_21": "Two independent forensic audits established that this file is a prefix of the full log: identical over its range after line-ending normalization and the 14-line <TTS> redaction recorded in the 'redaction' field above, with no numeric value, timestamp or step differing. The continuation promotes best_model_124700.pth at 99.7% of the run, superseding the best_model_49880.pth vs checkpoint_70000.pth comparison this artifact was used to support. The earlier 'ended measurably worse' reading is not supported by the full retained evidence. No audio or perceptual evaluation is retained, so the opposite is not established either.",
   "redaction": "One local filesystem prefix was replaced with <TTS> in 14 lines. No numeric value, timestamp or step was altered. trainproof's verdict and evidence strings are byte-identical before and after redaction; the unredacted original is retained privately as the provenance record.",
-  "why_it_ships": "Every other log in this repo is a fault injected on purpose. This one broke on its own, in a different log format, in a real fine-tune -- which is the harder thing to demonstrate."
+  "why_it_ships": "Every other log in this repo is a fault injected on purpose. This one is a real fine-tune in a different log format, which is the harder thing to parse. It shipped under the claim that the run 'broke on its own'; see correction_2026_09_21 -- that claim was derived from this prefix and is not supported by the full run."
 }

@@ -32,6 +32,13 @@ reported as `2`, so a crash can never impersonate a verdict.
 (`0` or `1`) rather than the conventional `130`, because interrupting the
 guardian to collect its judgment is the intended workflow.
 
+One path did not honour this table. `trainproof tokenizer` reported a missing
+`sentencepiece` install as a FAIL verdict and exit `1` from 0.10.0 — where "missing
+optional dependency" was moved under `2` as a documented breaking change — through
+0.21.0. **That deviation is now closed**: the finding is level `NOT-CHECKED` and the
+command exits `2`. It is recorded as breaking in the CHANGELOG, because a consumer
+distinguishing `1` from `2` on that path will observe the change.
+
 ## JSON output (`--json`)
 
 `schema_version` is **3**. Available on `data`, `tokenizer`, `epoch`, `doctor`,
@@ -151,6 +158,6 @@ filter in `doctor`'s directory walk. They agree today, but a future adapter
 must update both. The plug-in registry that removes this hazard is deferred
 until there is a second adapter to justify it.
 
-`TP-TOK-SPM-MISSING` still reports a missing `sentencepiece` install as a FAIL
-verdict rather than exit `2`, unlike the other missing-dependency paths. It is
-in the speech pack and will move to the `2` convention in a later release.
+The `TP-TOK-SPM-MISSING` gap that stood here — a missing `sentencepiece` install
+reported as a FAIL verdict rather than exit `2` — is closed. See **Exit codes** above
+and the CHANGELOG entry that marks the change breaking.
